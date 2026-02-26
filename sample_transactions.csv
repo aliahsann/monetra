@@ -1,0 +1,12 @@
+date,description,amount,counterparty,source
+2026-01-02,Customer Payment - Ahmad Electric,45000,Ahmad Electric,bank
+2026-01-05,Shell Petrol Station,-5200,Shell,card
+2026-01-07,Tool Purchase - Hardware Store,-12000,Local Hardware,supplier
+2026-01-10,Customer Payment - Khan Builders,38000,Khan Builders,bank
+2026-01-12,Shell Petrol Station,-6100,Shell,card
+2026-01-15,Monthly Mobile Subscription,-2500,Telco,subscription
+2026-01-18,Customer Payment - Ahmad Electric,42000,Ahmad Electric,bank
+2026-01-20,Subcontractor Payment - Ali Electric,-18000,Ali Electric,bank
+2026-01-22,Shell Petrol Station,-7000,Shell,card
+2026-01-25,Tool Purchase - Hardware Store,-9000,Local Hardware,supplier
+2026-01-28,Customer Payment - Khan Builders,40000,Khan Builders,bank
