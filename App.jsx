@@ -2233,6 +2233,31 @@ const styles = {
     .footer-logo { font-family: 'DM Serif Display', serif; font-size: 1.4rem; margin-bottom: 12px; display: block; color: var(--ink); }
     .footer-logo span { color: var(--amber); }
     .footer-desc { color: var(--ink-muted); font-size: 0.88rem; line-height: 1.6; max-width: 260px; }
+    .footer-social {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .footer-social .footer-link {
+      margin-bottom: 0;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.7);
+      font-size: 0.82rem;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink-muted);
+      transition: all 0.15s;
+    }
+    .footer-social .footer-link:hover {
+      background: var(--amber-light);
+      border-color: var(--amber);
+      color: var(--ink);
+    }
     .footer-h5 { font-size: 0.78rem; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink); font-weight: 700; }
     .footer-link { display: block; color: var(--ink-muted); text-decoration: none; margin-bottom: 8px; font-size: 0.88rem; transition: color 0.15s; }
     .footer-link:hover { color: var(--ink); }
@@ -3579,6 +3604,11 @@ function LandingPage({ onStart, user }) {
           <div>
             <img src={logo2} alt="Monetra Logo" className="footer-logo-img" style={{ height: '40px', marginBottom: '16px' }} />
             <p className="footer-desc">AI-powered financial management for micro-businesses. Make smarter decisions with real-time insights.</p>
+            <div className="footer-social">
+              <a className="footer-link" href="https://github.com/mushahiddd" target="_blank" rel="noreferrer noopener">GitHub</a>
+              <a className="footer-link" href="https://www.linkedin.com/in/mushahid19" target="_blank" rel="noreferrer noopener">LinkedIn</a>
+              <a className="footer-link" href="mailto:muhammadmushahid000@gmail.com">Email</a>
+            </div>
           </div>
           <div>
             <h5 className="footer-h5">Product</h5>
