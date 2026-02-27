@@ -52,9 +52,22 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="AI Financial Co-Pilot API")
 
 # Add CORS middleware early
+# Parse CORS origins from env var (comma-separated) or default to localhost + wildcard for dev
+def parse_cors_origins():
+    cors_var = settings.cors_allow_origins
+    if cors_var and cors_var != "*":
+        origins = [o.strip() for o in cors_var.split(",") if o.strip()]
+        # Always include localhost for dev
+        if "http://localhost:3000" not in origins:
+            origins.append("http://localhost:3000")
+        if "http://127.0.0.1:3000" not in origins:
+            origins.append("http://127.0.0.1:3000")
+        return origins
+    return ["http://localhost:3000", "http://127.0.0.1:3000", "*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_origins=parse_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -425,6 +438,50 @@ async def insights(period: str = "this_month", user_id: str = Depends(get_curren
             "type": "concentration_risk",
             "severity": "high",
             "raw": f"High risk detected: {top_customers[0].name} accounts for {top_customers[0].percentage}% of your revenue. Consider diversifying."
+        })
+
+    # --- Proactive Alerts Engine (Hackathon Feature) ---
+    
+    # 1. Unusual Spending Detection
+    try:
+        latest_batch_id = await fetch_latest_batch_id(user_id)
+        if latest_batch_id:
+            batch_txs = await MongoDB.db.transactions.find({"user_id": user_id, "batch_id": latest_batch_id, "direction": "out"}).to_list(length=1000)
+            
+            # Group by category from classification
+            cat_totals = {}
+            for tx in batch_txs:
+                cat = tx.get("classification", {}).get("expense_type") or "Other"
+                cat_totals[cat] = cat_totals.get(cat, 0) + float(tx.get("amount") or 0)
+            
+            # Compare with average spending from last 3 months
+            three_months_ago = (ref_date - timedelta(days=90)).isoformat()
+            hist_pipeline = [
+                {"$match": {"user_id": user_id, "direction": "out", "date": {"$gte": three_months_ago}, "batch_id": {"$ne": latest_batch_id}}},
+                {"$group": {"_id": "$classification.expense_type", "avg_monthly": {"$sum": "$amount"}}}
+            ]
+            hist_results = await MongoDB.db.transactions.aggregate(hist_pipeline).to_list(length=100)
+            hist_map = {res["_id"] or "Other": res["avg_monthly"] / 3.0 for res in hist_results}
+            
+            for cat, total in cat_totals.items():
+                avg = hist_map.get(cat, 0)
+                if avg > 0 and total > avg * 1.5: # 50% spike
+                    insights_raw.append({
+                        "type": "unusual_spending",
+                        "severity": "high",
+                        "alert": True,
+                        "raw": f"Unusual spike in {cat}! You've spent PKR {round(total)} this batch, which is 50% higher than your PKR {round(avg)} monthly average."
+                    })
+    except Exception as e:
+        logger.error(f"Unusual spending detection failed: {e}")
+
+    # 2. Cashflow Risk Alert (Runway < 4 weeks)
+    if health.runway_weeks < 4:
+        insights_raw.append({
+            "type": "cashflow_risk",
+            "severity": "high",
+            "alert": True,
+            "raw": f"Critical Cashflow Risk! Your runway is only {health.runway_weeks} weeks. Consider delaying non-essential expenses."
         })
 
     # Pattern 5: Large Transaction Alert
