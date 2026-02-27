@@ -10,7 +10,7 @@ import { LuBrainCircuit } from "react-icons/lu";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // ─── API ───────────────────────────────────────────────────────────────────────
-const BASE = "http://localhost:8000";
+const BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 
 const api = {
   getHeaders: () => {
