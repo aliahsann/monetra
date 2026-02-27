@@ -1571,6 +1571,8 @@ const styles = {
       .dashboard-layout {
         flex-direction: column;
         padding-top: 56px; /* Space for mobile header */
+        min-height: calc(100vh - 56px);
+        height: auto;
       }
       
       /* Mobile sidebar - hidden by default, slides in */
@@ -1636,6 +1638,9 @@ const styles = {
       .main-content {
         padding: 20px 16px !important;
         margin-left: 0 !important;
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
       }
     }
     
