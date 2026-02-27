@@ -1773,6 +1773,17 @@ const styles = {
       flex-direction: column;
       justify-content: center;
     }
+    @supports (height: 100dvh) {
+      .landing-hero {
+        min-height: calc(100dvh - 64px);
+      }
+    }
+    @media (max-width: 768px) {
+      .landing-hero {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+    }
     .landing-hero::before {
       content: '';
       position: absolute;
