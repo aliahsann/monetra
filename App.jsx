@@ -1571,8 +1571,17 @@ const styles = {
       .dashboard-layout {
         flex-direction: column;
         padding-top: 56px; /* Space for mobile header */
-        min-height: calc(100vh - 56px);
-        height: auto;
+        height: 100vh;
+        min-height: 100vh;
+        overflow: hidden;
+        box-sizing: border-box;
+      }
+
+      @supports (height: 100dvh) {
+        .dashboard-layout {
+          height: 100dvh;
+          min-height: 100dvh;
+        }
       }
       
       /* Mobile sidebar - hidden by default, slides in */
@@ -1641,6 +1650,7 @@ const styles = {
         flex: 1;
         min-height: 0;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
     }
     
