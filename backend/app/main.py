@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,27 +12,38 @@ from pydantic import BaseModel, EmailStr
 
 from .config import settings
 from .csv_parse import parse_transactions_csv
-from .llm import LLMError, chat_answer, classify_transaction, explain_insight, generate_weekly_advisor_summary
-from .models import ChatRequest, ChatResponse, ClassifyResponse, EntityMetric, HealthMetrics, InsightsResponse, RecurringMetric, UploadResponse
+from .models import ChatRequest, ChatResponse, ClassifyResponse, EntityMetric, HealthMetrics, InsightsResponse, RecurringMetric, UploadResponse, VisualsResponse, ManualTransactionRequest
 from .periods import last_month, this_month
 from .mongodb import (
     MongoDB,
     fetch_expense_totals_by_type,
-    fetch_period_summary,
-    fetch_recent_insights,
-    fetch_top_customers,
-    fetch_top_suppliers,
-    fetch_transactions,
-    fetch_historical_cash_flow,
     fetch_recurring_expenses,
     insert_classifications,
     insert_insights,
     insert_transactions,
+    fetch_all_transactions,
+    execute_intent,
+    fetch_latest_batch_id,
+    fetch_latest_batch_summary,
+    fetch_daily_trends,
+    fetch_expense_distribution,
+    fetch_lifetime_summary,
+    fetch_period_summary,
+)
+from .llm import (
+    LLMError,
+    chat_answer,
+    classify_transaction,
+    explain_insight,
+    generate_weekly_advisor_summary,
+    extract_intent,
+    generate_answer,
 )
 from .auth import get_current_user_id, get_password_hash, verify_password, create_access_token
 
 
 import logging
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -169,6 +180,35 @@ async def root() -> dict[str, str]:
     return {"message": "AI Financial Co-Pilot API is running"}
 
 
+@app.post("/add-transaction")
+async def add_transaction(req: ManualTransactionRequest, user_id: str = Depends(get_current_user_id)):
+    logger.info(f"Manual transaction entry: {req.description} ({req.amount})")
+    row = {
+        "date": req.date,
+        "amount": float(req.amount),
+        "description": req.description,
+        "direction": req.direction,
+        "source": "manual"
+    }
+    try:
+        batch_id = datetime.now(timezone.utc).isoformat()
+        inserted = await insert_transactions(user_id, [row], batch_id=batch_id)
+        tx_id_str = inserted[0]["id"]
+        classification = {
+            "transaction_id": ObjectId(tx_id_str),
+            "entity": req.description,
+            "type": "income" if req.direction == "in" else "expense",
+            "expense_type": req.category if req.direction == "out" else None,
+            "revenue_stream": req.category if req.direction == "in" else None,
+            "tags": ["manual"],
+            "confidence": 1.0,
+        }
+        await insert_classifications(user_id, [classification])
+        return {"status": "success", "id": tx_id_str, "batch_id": batch_id}
+    except Exception as e:
+        logger.error(f"Manual add failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to add transaction: {e}")
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -192,7 +232,8 @@ async def upload_transactions(file: UploadFile = File(...), user_id: str = Depen
         raise HTTPException(status_code=400, detail="No valid transaction rows found")
 
     try:
-        inserted = await insert_transactions(user_id, rows)
+        batch_id = datetime.now(timezone.utc).isoformat()
+        inserted = await insert_transactions(user_id, rows, batch_id=batch_id)
         logger.info(f"Inserted {len(inserted)} transactions into DB")
     except Exception as e:
         logger.error(f"DB insert error: {e}")
@@ -202,20 +243,23 @@ async def upload_transactions(file: UploadFile = File(...), user_id: str = Depen
     cash_out = sum(float(r["amount"]) for r in rows if r.get("direction") == "out")
     net = cash_in - cash_out
 
+    logger.info(f"Upload complete. Summary prepared: {cash_in}/{cash_out}")
     return UploadResponse(
         summary={
-            "cash_in": round(cash_in, 2), 
-            "cash_out": round(cash_out, 2), 
-            "net": round(net, 2)
+            "cash_in": float(round(cash_in, 2)), 
+            "cash_out": float(round(cash_out, 2)), 
+            "net": float(round(net, 2))
         }, 
-        inserted=len(inserted)
+        inserted=int(len(inserted))
     )
 
 
 @app.post("/classify", response_model=ClassifyResponse)
 async def classify(limit: int = 100, user_id: str = Depends(get_current_user_id)):
     logger.info(f"Starting classification for up to {limit} transactions")
-    txs = await fetch_transactions(user_id, limit=limit)
+    # This endpoint should probably use fetch_latest_batch_transactions
+    # For now, it uses the old fetch_transactions which might not be batch-specific
+    txs = await MongoDB.db.transactions.find({"user_id": user_id, "classification": {"$exists": False}}).limit(limit).to_list(length=limit)
     if not txs:
         logger.info("No transactions to classify")
         return ClassifyResponse(classified=0)
@@ -236,7 +280,7 @@ async def classify(limit: int = 100, user_id: str = Depends(get_current_user_id)
 
         out_rows.append(
             {
-                "transaction_id": ObjectId(t.get("id")),
+                "transaction_id": ObjectId(t.get("_id")),
                 "entity": c.get("entity") or "Unknown",
                 "type": c.get("type") or ("income" if t.get("direction") == "in" else "expense"),
                 "expense_type": c.get("expense_type"),
@@ -260,7 +304,7 @@ async def classify(limit: int = 100, user_id: str = Depends(get_current_user_id)
 async def insights(period: str = "this_month", user_id: str = Depends(get_current_user_id)):
     # Determine the reference date based on the latest transaction
     try:
-        latest_txs = await fetch_transactions(user_id, limit=1)
+        latest_txs = await MongoDB.db.transactions.find({"user_id": user_id}).sort("date", -1).limit(1).to_list(length=1)
         if latest_txs:
             # Parse the date string from the database (assuming ISO format YYYY-MM-DD)
             ref_date = date.fromisoformat(latest_txs[0]["date"])
@@ -275,32 +319,39 @@ async def insights(period: str = "this_month", user_id: str = Depends(get_curren
     p_last = last_month(today=ref_date)
 
     try:
+        # Use PERIOD summary for both current and last month
         sum_this = await fetch_period_summary(user_id, p_this.start, p_this.end)
         sum_last = await fetch_period_summary(user_id, p_last.start, p_last.end)
+        
+        # LIFETIME summary for the total balance
+        sum_total = await fetch_lifetime_summary(user_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch summary: {e}")
+        logger.error(f"Summary fetch error: {e}")
+        sum_this = {"cash_in": 0.0, "cash_out": 0.0, "net": 0.0}
+        sum_last = {"cash_in": 0.0, "cash_out": 0.0, "net": 0.0}
+        sum_total = {"cash_in": 0.0, "cash_out": 0.0, "net": 0.0}
+
+    # Ensure all values are floats for Pydantic
+    for d in [sum_this, sum_last, sum_total]:
+        for k in ["cash_in", "cash_out", "net"]:
+            d[k] = float(d.get(k) or 0.0)
 
     # --- Intelligence Layer: Health & Runway ---
     try:
-        historical = await fetch_historical_cash_flow(user_id, limit_days=90)
+        # Use batch summary for metrics
         total_cash = sum_this.get("cash_in", 0) - sum_this.get("cash_out", 0)
-        # Simple runway calculation: average monthly burn
-        avg_monthly_burn = float(sum_last.get("cash_out") or sum_this.get("cash_out") or 1000.0)
-        runway_weeks = (total_cash / (avg_monthly_burn / 4.33)) if avg_monthly_burn > 0 else 52.0
         
-        # Health Score logic
+        # Simple health score logic based on latest batch performance
         score = 75 # default
         if sum_this.get("net", 0) > 0: score += 15
-        if runway_weeks > 12: score += 10
-        if sum_this.get("cash_out", 0) > sum_last.get("cash_out", 0) * 1.2: score -= 20
-        score = max(0, min(100, score))
         
+        # We calculate status but keep it simple
         status = "Healthy" if score > 80 else "Stable" if score > 50 else "At Risk"
         
         health = HealthMetrics(
             score=score,
             status=status,
-            runway_weeks=round(max(0, runway_weeks), 1),
+            runway_weeks=12.0, # Defaulting for strict file mode unless we want to use last month
             cash_reserve=float(total_cash)
         )
     except Exception:
@@ -308,14 +359,25 @@ async def insights(period: str = "this_month", user_id: str = Depends(get_curren
 
     # --- Intelligence Layer: Top Entities ---
     try:
-        raw_top_cust = await fetch_top_customers(user_id, p_this.start, p_this.end)
+        latest_batch_id = await fetch_latest_batch_id(user_id)
+        raw_top_cust = await MongoDB.db.transactions.aggregate([
+            {"$match": {"user_id": user_id, "batch_id": latest_batch_id, "direction": "in", "classification.entity": {"$exists": True, "$ne": None}}},
+            {"$group": {"_id": "$classification.entity", "revenue": {"$sum": "$amount"}}},
+            {"$sort": {"revenue": -1}},
+            {"$project": {"entity": "$_id", "revenue": "$revenue", "_id": 0}}
+        ]).to_list(length=3)
         total_in = sum_this.get("cash_in") or 1.0
         top_customers = [
             EntityMetric(name=c["entity"], amount=c["revenue"], percentage=round((c["revenue"]/total_in)*100, 1))
             for c in raw_top_cust[:3]
         ]
         
-        raw_top_supp = await fetch_top_suppliers(user_id, p_this.start, p_this.end)
+        raw_top_supp = await MongoDB.db.transactions.aggregate([
+            {"$match": {"user_id": user_id, "batch_id": latest_batch_id, "direction": "out", "classification.entity": {"$exists": True, "$ne": None}}},
+            {"$group": {"_id": "$classification.entity", "expense": {"$sum": "$amount"}}},
+            {"$sort": {"expense": -1}},
+            {"$project": {"entity": "$_id", "expense": "$expense", "_id": 0}}
+        ]).to_list(length=3)
         total_out = sum_this.get("cash_out") or 1.0
         top_suppliers = [
             EntityMetric(name=s["entity"], amount=s["expense"], percentage=round((s["expense"]/total_out)*100, 1))
@@ -342,61 +404,49 @@ async def insights(period: str = "this_month", user_id: str = Depends(get_curren
         insights_raw.append({"type": "expense_increase", "severity": "medium", "raw": f"Your spending is up about {pct}% versus last month."})
 
     # Pattern 2: expenses > income
-    if float(sum_this.get("cash_out") or 0.0) > float(sum_this.get("cash_in") or 0.0) and float(sum_this.get("cash_in") or 0.0) > 0:
+    total_in = float(sum_this.get("cash_in") or 0.0)
+    total_out = float(sum_this.get("cash_out") or 0.0)
+    if total_out > total_in and total_in > 0:
         insights_raw.append({"type": "spend_over_income", "severity": "high", "raw": "You spent more than you earned this month."})
 
-    # Pattern 3: top customer revenue > 60%
-    try:
-        top = await fetch_top_customers(user_id, p_this.start, p_this.end)
-    except Exception:
-        top = []
-    total_rev = sum(x["revenue"] for x in top) if top else 0.0
-    if top and total_rev > 0:
-        share = top[0]["revenue"] / total_rev
-        if share > 0.6:
-            pct = round(share * 100)
-            insights_raw.append({"type": "customer_concentration", "severity": "medium", "raw": f"Most of your income came from {top[0]['entity']} (about {pct}%)."})
+    # Pattern 3: Profit Margin Analysis (Heuristic Rule)
+    if total_in > 0:
+        margin = ((total_in - total_out) / total_in) * 100
+        if margin < 20:
+             insights_raw.append({
+                 "type": "low_margin", 
+                 "severity": "medium", 
+                 "raw": f"Your profit margin is currently {round(margin)}%. Aim for at least 20% to build a safe buffer."
+             })
 
-    # Pattern 4: Anomaly Detection - Unusual spending spike
-    try:
-        exp_by_type = await fetch_expense_totals_by_type(user_id, p_this.start, p_this.end)
-        exp_by_type_last = await fetch_expense_totals_by_type(user_id, p_last.start, p_last.end)
-        for cat, amt in exp_by_type.items():
-            last_amt = exp_by_type_last.get(cat, 0)
-            if last_amt > 0 and amt > last_amt * 1.5:
-                pct = round(((amt - last_amt) / last_amt) * 100)
-                insights_raw.append({
-                    "type": "anomaly_spike",
-                    "severity": "high",
-                    "raw": f"Unusual {cat} spike: spent ${round(amt)}, which is {pct}% higher than last month."
-                })
-    except Exception:
-        pass
+    # Pattern 4: Customer Concentration (Risk Rule)
+    if top_customers and top_customers[0].percentage > 50:
+        insights_raw.append({
+            "type": "concentration_risk",
+            "severity": "high",
+            "raw": f"High risk detected: {top_customers[0].name} accounts for {top_customers[0].percentage}% of your revenue. Consider diversifying."
+        })
 
     # Pattern 5: Large Transaction Alert
     try:
-        all_txs = await fetch_transactions(user_id, limit=100)
-        large_threshold = 2000 # Example threshold
+        # Scan latest batch for large outliers
+        latest_batch_id = await fetch_latest_batch_id(user_id)
+        batch_txs = await MongoDB.db.transactions.find({"user_id": user_id, "batch_id": latest_batch_id}).limit(500).to_list(length=500)
+        large_threshold = total_out * 0.1 # 10% of total spend
+        if large_threshold < 1000: large_threshold = 1000
+        
         seen_large_descriptions = set()
-        for tx in all_txs:
+        for tx in [t for t in batch_txs if t.get("direction") == "out"]:
             desc = tx.get("description")
-            if tx.get("direction") == "out" and float(tx.get("amount") or 0) > large_threshold:
+            amt = float(tx.get("amount") or 0)
+            if amt > large_threshold:
                 if desc not in seen_large_descriptions:
                     insights_raw.append({
                         "type": "large_expense",
                         "severity": "medium",
-                        "raw": f"Large expense detected: ${round(tx['amount'])} for {desc}."
+                        "raw": f"Large expense detected: ${round(amt)} for {desc}."
                     })
                     seen_large_descriptions.add(desc)
-    except Exception:
-        pass
-
-    # Optional: biggest expense type
-    try:
-        exp_by_type = await fetch_expense_totals_by_type(user_id, p_this.start, p_this.end)
-        if exp_by_type:
-            k, v = sorted(exp_by_type.items(), key=lambda x: x[1], reverse=True)[0]
-            insights_raw.append({"type": "top_expense", "severity": "low", "raw": f"Your biggest expense area this month looks like {k} (about ${round(v)})."})
     except Exception:
         pass
 
@@ -405,7 +455,7 @@ async def insights(period: str = "this_month", user_id: str = Depends(get_curren
     
     # Fetch existing insights for this period to avoid duplicates
     try:
-        existing_insights = await fetch_recent_insights(user_id, period=period, limit=100)
+        existing_insights = await MongoDB.db.insights.find({"user_id": user_id, "period": period}).limit(100).to_list(length=100)
         existing_messages = {ins["message"] for ins in existing_insights}
     except Exception:
         existing_messages = set()
@@ -438,14 +488,14 @@ async def insights(period: str = "this_month", user_id: str = Depends(get_curren
 
     # Fetch recent insights for this period
     try:
-        recent = await fetch_recent_insights(user_id, period=period, limit=10)
+        recent = await MongoDB.db.insights.find({"user_id": user_id, "period": period}).sort("timestamp", -1).limit(10).to_list(length=10)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch insights: {e}")
 
     # If no insights were found for the requested period, fallback to any available insights
     if not recent:
         try:
-            recent = await fetch_recent_insights(user_id, period=None, limit=10)
+            recent = await MongoDB.db.insights.find({"user_id": user_id}).sort("timestamp", -1).limit(10).to_list(length=10)
         except Exception:
             recent = []
 
@@ -466,6 +516,7 @@ async def insights(period: str = "this_month", user_id: str = Depends(get_curren
         insights=recent,
         summary_this=sum_this,
         summary_last=sum_last,
+        summary_total=sum_total,
         health=health,
         top_customers=top_customers,
         top_suppliers=top_suppliers,
@@ -474,84 +525,109 @@ async def insights(period: str = "this_month", user_id: str = Depends(get_curren
     )
 
 
+@app.get("/analytics/visuals", response_model=VisualsResponse)
+async def get_visuals(user_id: str = Depends(get_current_user_id)):
+    try:
+        trends = await fetch_daily_trends(user_id)
+        distribution = await fetch_expense_distribution(user_id)
+        return VisualsResponse(trends=trends, distribution=distribution)
+    except Exception as e:
+        logger.error(f"Visuals error: {e}")
+        return VisualsResponse(trends=[], distribution=[])
+
+@app.get("/transactions")
+async def get_transactions(user_id: str = Depends(get_current_user_id)):
+    txs = await fetch_all_transactions(user_id)
+    return txs
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, user_id: str = Depends(get_current_user_id)):
     question = (req.message or req.question or "").strip()
     if not question:
         raise HTTPException(status_code=400, detail="Provide 'message' (frontend) or 'question'.")
 
-    # Determine the reference date based on the latest transaction
+    # --- Step 1: Extract Intent (Low Token usage) ---
     try:
-        latest_txs = await fetch_transactions(user_id, limit=100) # Fetch more for context
-        if latest_txs:
-            ref_date = date.fromisoformat(latest_txs[0]["date"])
-        else:
-            ref_date = date.today()
-    except Exception:
-        ref_date = date.today()
-        latest_txs = []
+        intent = await extract_intent(question)
+    except Exception as e:
+        logger.error(f"Intent extraction failed: {e}")
+        intent = {"intent": "unknown"}
 
-    p_this = this_month(today=ref_date)
-    p_last = last_month(today=ref_date)
-    
+    # --- Step 2: Execute Deterministic Financial Logic ---
     try:
-        summary = await fetch_period_summary(user_id, p_this.start, p_this.end)
-        recent_insights = await fetch_recent_insights(user_id, period="this_month", limit=8)
+        # We use batch summary for AI context or period summary? Period is better for accuracy
+        # But execute_intent used to take batch_id. Let's make it work with period or latest.
+        batch_id = await fetch_latest_batch_id(user_id)
+        if not batch_id:
+             return ChatResponse(reply="I don't see any data to analyze. Please upload a file or add a transaction.")
+             
+        # Deterministically compute based on latest batch isolation (old logic) or refactor?
+        # Let's use simple logic for now:
+        res_summary = await fetch_latest_batch_summary(user_id)
         
-        # Add Health and Runway context for What-If analysis
-        total_cash = summary.get("cash_in", 0) - summary.get("cash_out", 0)
-        avg_monthly_burn = float((await fetch_period_summary(user_id, p_last.start, p_last.end)).get("cash_out") or summary.get("cash_out") or 1000.0)
-        runway_weeks = (total_cash / (avg_monthly_burn / 4.33)) if avg_monthly_burn > 0 else 52.0
-    except Exception as e:
-        logger.error(f"Failed to load context for chat: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to load context: {e}")
-
-    # Build a strictly data-driven context including specific transactions
-    tx_details = ""
-    for t in latest_txs[:50]: # Provide last 50 transactions for deep-dive questions
-        tx_details += f"- {t['date']}: {t['description']} | ${t['amount']} ({t['direction']})\n"
-
-    context = (
-        f"STRICT INSTRUCTION: Base your answer ONLY on the following data. If asked about a specific entity or amount, look through the 'Transaction List' below.\n\n"
-        f"Current Month: {ref_date.strftime('%B %Y')}\n"
-        f"Totals for this month: Cash In ${round(summary['cash_in'])}, Cash Out ${round(summary['cash_out'])}, Net ${round(summary['net'])}\n"
-        f"Cash Reserve: ${round(total_cash)}\n"
-        f"Estimated Runway: {round(runway_weeks, 1)} weeks\n\n"
-        f"Transaction List (Latest 50):\n{tx_details}\n"
-        f"Recent Insights:\n"
-    )
-    for ins in recent_insights:
-        context += f"- {ins.get('message')}\n"
-
-    if req.history:
-        context += "\nConversation so far:\n"
-        for h in req.history[-12:]:
-            role = (h.get("role") or "").strip()
-            content = (h.get("content") or "").strip()
-            if role and content:
-                context += f"- {role}: {content}\n"
-
-    try:
-        reply = await chat_answer(context=context, question=question)
-    except LLMError as e:
-        if "429" in str(e):
-            logger.warning("Gemini rate limit hit, using structured fallback.")
-            # Structured fallback logic for common questions
-            q_lower = question.lower()
-            if "cash in" in q_lower or "revenue" in q_lower:
-                reply = f"You've brought in ${round(summary['cash_in'])} this month. Your top customer contributed a significant portion of that."
-            elif "cash out" in q_lower or "spent" in q_lower or "expense" in q_lower:
-                reply = f"You've spent ${round(summary['cash_out'])} this month. I've noticed some large expenses that you might want to review in the 'Critical Insights' section."
-            elif "runway" in q_lower or "how long" in q_lower:
-                reply = f"Based on your current cash reserve of ${round(total_cash)}, your estimated runway is about {round(runway_weeks, 1)} weeks."
-            elif "net" in q_lower or "profit" in q_lower:
-                reply = f"Your net change for this month is ${round(summary['net'])}. This factors into your overall health score of {round(runway_weeks * 5)} (estimated)."
+        # Simple intent logic directly here for speed
+        intent_type = intent.get("intent")
+        result = {"message": "Computed from your latest data."}
+        if intent_type == "total_expenses": result = {"total_expenses": res_summary["cash_out"]}
+        elif intent_type == "total_income": result = {"total_income": res_summary["cash_in"]}
+        elif intent_type == "balance": result = {"balance": res_summary["net"]}
+        elif intent_type == "last_transaction":
+            filter_dir = intent.get("filter")
+            q = {"user_id": user_id}
+            if filter_dir: q["direction"] = filter_dir
+            
+            last_tx = await MongoDB.db.transactions.find(q).sort("date", -1).limit(1).to_list(length=1)
+            if last_tx:
+                result = {"last_transaction": {
+                    "date": last_tx[0]["date"],
+                    "amount": last_tx[0]["amount"],
+                    "description": last_tx[0]["description"],
+                    "direction": last_tx[0]["direction"]
+                }}
             else:
-                reply = f"I'm currently experiencing high demand, but I can tell you that your net change this month is ${round(summary['net'])} and your runway is {round(runway_weeks, 1)} weeks. Ask me specifically about 'cash in', 'cash out', or 'runway' for more details."
-        else:
-            raise HTTPException(status_code=502, detail=str(e))
+                result = {"message": "No transactions found to show as 'last'."}
+        elif intent_type == "affordability_check":
+            target = float(intent.get("amount") or 0)
+            result = {"balance": res_summary["net"], "target_purchase": target, "can_afford": res_summary["net"] >= target}
     except Exception as e:
-        logger.error(f"Unexpected chat error: {e}")
-        raise HTTPException(status_code=500, detail=f"Chat error: {e}")
+        logger.error(f"Financial engine failure: {e}")
+        return ChatResponse(reply="I encountered an error calculating those numbers.")
 
-    return ChatResponse(reply=reply)
+    # --- Step 3: Strategic Context Injection (RAG-lite) ---
+    try:
+        summary = await fetch_latest_batch_summary(user_id)
+        strategic_context = {
+            "business_health": "Stable",
+            "current_net_margin": round(((summary['cash_in'] - summary['cash_out']) / summary['cash_in'] * 100)) if summary['cash_in'] > 0 else 0,
+            "total_income": summary['cash_in'],
+            "total_expenses": summary['cash_out']
+        }
+        enriched_result = {**result, "strategic_context": strategic_context}
+        answer = await generate_answer(question, enriched_result)
+        return ChatResponse(reply=answer)
+    except Exception as e:
+        logger.error(f"Final chat stage failed: {e}")
+        return ChatResponse(reply="I found the info but had trouble explaining it. Check your dashboard metrics!")
+
+# Data Management Endpoints
+class UpdateEmailRequest(BaseModel):
+    email: EmailStr
+
+@app.post("/auth/update-email")
+async def update_email(req: UpdateEmailRequest, user_id: str = Depends(get_current_user_id)):
+    db = MongoDB.db
+    # Check if email is already taken
+    existing = await db.users.find_one({"email": req.email})
+    if existing and str(existing["_id"]) != user_id:
+        raise HTTPException(status_code=400, detail="Email already in use")
+    
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"email": req.email}})
+    return {"status": "success", "email": req.email}
+
+@app.post("/data/clear")
+async def clear_data_endpoint(user_id: str = Depends(get_current_user_id)):
+    from .mongodb import clear_user_data
+    success = await clear_user_data(user_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to clear data")
+    return {"status": "success", "message": "All user data cleared"}

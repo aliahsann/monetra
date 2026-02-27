@@ -17,6 +17,13 @@ class TransactionIn(BaseModel):
     direction: Literal["in", "out"]
     source: str = "csv"
 
+class ManualTransactionRequest(BaseModel):
+    date: str
+    amount: float
+    description: str
+    direction: Literal["in", "out"]
+    category: str
+
 
 class UploadResponse(BaseModel):
     summary: dict[str, float]
@@ -65,6 +72,7 @@ class InsightsResponse(BaseModel):
     insights: list[Insight]
     summary_this: dict[str, float] | None = None
     summary_last: dict[str, float] | None = None
+    summary_total: dict[str, float] | None = None
     health: HealthMetrics | None = None
     top_customers: list[EntityMetric] | None = None
     top_suppliers: list[EntityMetric] | None = None
@@ -80,3 +88,8 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class VisualsResponse(BaseModel):
+    trends: list[dict[str, Any]]
+    distribution: list[dict[str, Any]]

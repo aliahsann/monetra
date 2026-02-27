@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback, memo, createElement } from "react";
-import logo from "./monetra logo 2.png";
+import logo from "./monetra logo 3.png";
+import logo2 from "./monetra logo 2.png";
 import { gsap } from "gsap";
 import { GoArrowUpRight } from "react-icons/go";
-import { motion } from "framer-motion";
+import { motion, useInView, useMotionValue, useSpring } from "framer-motion";
 import { SiReact, SiGooglecloud, SiTailwindcss, SiVite, SiPython, SiFastapi } from "react-icons/si";
+import { FiHome, FiPlusCircle, FiAlertCircle, FiMessageSquare, FiList, FiLogOut, FiPieChart, FiUser, FiSettings, FiTrash2, FiEdit2, FiShield, FiGlobe, FiDatabase } from "react-icons/fi";
+import { LuBrainCircuit } from "react-icons/lu";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // ─── API ───────────────────────────────────────────────────────────────────────
 const BASE = "http://localhost:8000";
@@ -78,26 +82,137 @@ const api = {
       method: "POST",
       headers,
       body: JSON.stringify({ message, history }),
-    }).then((r) => r.json());
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json();
+        throw new Error(err.detail || "Chat failed");
+      }
+      return r.json();
+    });
   },
+  visuals: async () => {
+    const headers = api.getHeaders();
+    return fetch(`${BASE}/analytics/visuals`, { headers }).then((r) => r.json());
+  },
+  addTransaction: async (data) => {
+    const headers = api.getHeaders();
+    return fetch(`${BASE}/add-transaction`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data)
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json();
+        throw new Error(err.detail || "Failed to add transaction");
+      }
+      return r.json();
+    });
+  },
+  getTransactions: async () => {
+    const headers = api.getHeaders();
+    return fetch(`${BASE}/transactions`, { headers }).then(async (r) => {
+      if (!r.ok) throw new Error("Failed to fetch transactions");
+      return r.json();
+    });
+  },
+  updateEmail: (email) => {
+    const headers = api.getHeaders();
+    return fetch(`${BASE}/auth/update-email`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ email }),
+    }).then((r) => {
+      if (!r.ok) throw new Error("Failed to update email");
+      return r.json();
+    });
+  },
+  clearData: () => {
+    const headers = api.getHeaders();
+    return fetch(`${BASE}/data/clear`, {
+      method: "POST",
+      headers,
+    }).then((r) => {
+      if (!r.ok) throw new Error("Failed to clear data");
+      return r.json();
+    });
+  }
 };
 
 // ─── MOCK DATA (used if API unreachable) ──────────────────────────────────────
 const MOCK_SUMMARY = { cash_in: 165000, cash_out: 59800, net: 105200 };
 const MOCK_INSIGHTS = [
-  { message: "You brought in $165,000 this month — strongest month on record.", severity: "positive" },
+  { message: "You brought in PKR 165,000 this month — strongest month on record.", severity: "positive" },
   { message: "Materials spending is up 15%. Consider buying in bulk to save.", severity: "medium" },
-  { message: "You have $12,400 in outstanding invoices from 4 clients.", severity: "high" },
+  { message: "You have PKR 12,400 in outstanding invoices from 4 clients.", severity: "high" },
   { message: "Marketing ROI improved by 20% compared to last quarter.", severity: "positive" },
   { message: "Fuel costs are stabilizing after last month's spike.", severity: "low" },
 ];
 
-const MOCK_CHAT_RESPONSES = {
-  "where is my money going?": "Most of your money this month went to Materials ($24,500) and Labor ($18,200). You also had a significant spike in Fuel costs early in the month.",
-  "am i doing better than last month?": "Yes! Your net profit is up 12% compared to last month, mainly due to the large Khan Builders contract completion.",
-  "any risks i should know about?": "The main risk is your outstanding invoices. You have $12,400 unpaid, which could impact your cash flow next month if not collected soon.",
-  "default": "I'm analyzing your finances now. Based on your data, you're having a strong month with $105,200 in net change. Is there a specific category you'd like to dive into?"
+// ─── DEMO ACCOUNT DATA ────────────────────────────────────────────────────────
+const DEMO_DATA = {
+  user: { email: "demo@monetra.app", isDemo: true },
+  summary: { cash_in: 184500, cash_out: 72300, net: 112200, balance: 412500 },
+  summaryThis: { cash_in: 184500, cash_out: 72300, net: 112200, balance: 412500 },
+  summaryTotal: { cash_in: 184500, cash_out: 72300, net: 112200, balance: 412500 },
+  summaryLast: { cash_in: 158000, cash_out: 68400, net: 89600, balance: 300300 },
+  health: { score: 88, status: "Healthy", runway_weeks: 18.5, cash_reserve: 112200 },
+  insights: [
+    { type: "positive", message: "Revenue is up 16.8% this month — strongest performance in 6 months. Khan Builders contract was a major driver.", severity: "positive" },
+    { type: "low_margin", message: "Your net margin is 60.8% — well above the 20% safety threshold. Keep it up!", severity: "positive" },
+    { type: "large_expense", message: "Large expense detected: PKR 18,000 for Heavy Machinery Rental. Verify this is within budget.", severity: "medium" },
+    { type: "expense_increase", message: "Fuel & transport costs rose 22% vs last month. Consider route optimization to cut costs.", severity: "medium" },
+    { type: "concentration_risk", message: "Khan Builders accounts for 38% of revenue. Diversifying your client base will reduce risk.", severity: "high" },
+  ],
+  topCustomers: [
+    { name: "Khan Builders Ltd.", amount: 70000, percentage: 37.9 },
+    { name: "Apex Constructions", amount: 52000, percentage: 28.2 },
+    { name: "GreenField Developers", amount: 38500, percentage: 20.9 },
+  ],
+  topSuppliers: [
+    { name: "Steel & Sons Supply", amount: 21400, percentage: 29.6 },
+    { name: "ProFuel Network", amount: 14800, percentage: 20.5 },
+    { name: "ToolMart Industrial", amount: 11200, percentage: 15.5 },
+  ],
+  recurringExpenses: [
+    { name: "ProFuel Network", amount: 4933, frequency: "Monthly" },
+    { name: "Site Security Services", amount: 3200, frequency: "Monthly" },
+    { name: "Adobe Suite", amount: 599, frequency: "Monthly" },
+    { name: "QuickBooks Plan", amount: 349, frequency: "Monthly" },
+  ],
+  advisorSummary: "• Revenue is 16.8% higher than last month — excellent momentum.\n• Your cash runway of 18.5 weeks is strong. Consider setting aside 10% as an emergency reserve.\n• Khan Builders is your top client at 38% of revenue — a great relationship, but worth finding 1–2 new clients to reduce dependency.\n• Fuel costs spiked this month. Talk to your logistics team about route bundling.",
+  visuals: {
+    trends: [
+      { date: "Feb 01", income: 12000, expense: 4800 },
+      { date: "Feb 03", income: 18500, expense: 6200 },
+      { date: "Feb 05", income: 8000, expense: 5100 },
+      { date: "Feb 07", income: 22000, expense: 7800 },
+      { date: "Feb 09", income: 14000, expense: 4200 },
+      { date: "Feb 11", income: 19500, expense: 9100 },
+      { date: "Feb 13", income: 11000, expense: 3800 },
+      { date: "Feb 15", income: 28000, expense: 11200 },
+      { date: "Feb 17", income: 9500, expense: 4600 },
+      { date: "Feb 19", income: 16000, expense: 5900 },
+      { date: "Feb 21", income: 21000, expense: 7300 },
+      { date: "Feb 23", income: 5000, expense: 3400 },
+    ],
+    distribution: [
+      { name: "Materials", value: 21400 },
+      { name: "Fuel & Transport", value: 14800 },
+      { name: "Equipment Rental", value: 18000 },
+      { name: "Labor (Contract)", value: 11200 },
+      { name: "Software & Tools", value: 4200 },
+      { name: "Other", value: 2700 },
+    ],
+  },
 };
+
+const MOCK_CHAT_RESPONSES = {
+  "where is my money going?": "Most of your money this month went to Materials (PKR 24,500) and Labor (PKR 18,200). You also had a significant spike in Fuel costs early in the month.",
+  "am i doing better than last month?": "Yes! Your net profit is up 12% compared to last month, mainly due to the large Khan Builders contract completion.",
+  "any risks i should know about?": "The main risk is your outstanding invoices. You have PKR 12,400 unpaid, which could impact your cash flow next month if not collected soon.",
+  "default": "I'm analyzing your finances now. Based on your data, you're having a strong month with PKR 105,200 in net change. Is there a specific category you'd like to dive into?"
+};
+
 
 // ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
 const styles = {
@@ -120,9 +235,9 @@ const styles = {
       --red-light: #FDECEA;
       --blue: #3B74D4;
       --blue-light: #EBF1FB;
-      --border: #EDE9E1;
-      --shadow: 0 2px 12px rgba(26,24,20,0.07);
-      --shadow-lg: 0 8px 32px rgba(26,24,20,0.10);
+      --border: #D1CDC2;
+      --shadow: 0 4px 16px rgba(26,24,20,0.08);
+      --shadow-lg: 0 12px 40px rgba(26,24,20,0.12);
       --radius: 16px;
       --radius-sm: 10px;
       
@@ -256,6 +371,78 @@ const styles = {
     }
     .file-name { font-weight: 600; color: var(--green); font-size: 0.95rem; }
 
+    .manual-form-wrap {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      text-align: left;
+    }
+    .mode-toggle {
+      display: flex;
+      background: #F0EDE8;
+      padding: 4px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: none;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      color: var(--ink-muted);
+    }
+    .mode-btn.active {
+      background: white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      color: var(--ink);
+    }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .form-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+    }
+    .form-input, .form-select {
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      background: var(--bg);
+      outline: none;
+      transition: all 0.2s;
+    }
+    .form-input:focus, .form-select:focus {
+      border-color: var(--amber);
+      background: white;
+      box-shadow: 0 0 0 4px var(--amber-light);
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 540px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .manual-form-wrap { padding: 20px; }
+    }
+
     .btn-primary {
       display: inline-flex;
       align-items: center;
@@ -352,6 +539,13 @@ const styles = {
         grid-template-columns: 1fr;
       }
     }
+    .health-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      border: 1.5px solid var(--border);
+    }
     @media (max-width: 480px) {
       .health-card {
         padding: 12px;
@@ -409,6 +603,110 @@ const styles = {
     .runway-fill { height: 100%; background: var(--amber); border-radius: 4px; transition: width 0.5s ease; }
     .runway-stats { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--ink-muted); }
 
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15,14,12,0.6);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      animation: fadeIn 0.3s ease;
+    }
+    .modal-content {
+      background: white;
+      width: 100%;
+      max-width: 440px;
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+      border: 1.5px solid var(--border);
+      position: relative;
+      animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    
+    .modal-title { font-size: 1.25rem; font-weight: 700; color: var(--ink); margin-bottom: 12px; }
+    .modal-body { font-size: 0.95rem; color: var(--ink-muted); margin-bottom: 32px; line-height: 1.6; }
+    .modal-actions { display: flex; gap: 12px; justify-content: flex-end; }
+
+    /* Magic Bento Styles */
+    .magic-card {
+      position: relative;
+      overflow: hidden;
+      --glow-x: 50%;
+      --glow-y: 50%;
+      --glow-intensity: 0;
+      --glow-radius: 300px;
+      --glow-color: 232, 160, 32; /* var(--amber) RGB */
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      background: white;
+      border: 1.5px solid var(--border);
+    }
+    .magic-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      padding: 4px; /* Thicker border glow */
+      background: radial-gradient(
+        var(--glow-radius) circle at var(--glow-x) var(--glow-y),
+        rgba(var(--glow-color), calc(var(--glow-intensity) * 1)) 0%,
+        rgba(var(--glow-color), calc(var(--glow-intensity) * 0.4)) 40%,
+        transparent 80%
+      );
+      border-radius: inherit;
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      z-index: 20; /* High z-index for border glow */
+    }
+    .magic-card:hover::after { opacity: 1; }
+    .magic-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(232, 160, 32, 0.15); }
+    
+    .particle {
+      position: absolute;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(var(--glow-color), 1);
+      box-shadow: 0 0 10px rgba(var(--glow-color), 0.8);
+      pointer-events: none;
+      z-index: 30; /* Particles on very top */
+    }
+    
+    .global-spotlight {
+      position: fixed;
+      width: 800px;
+      height: 800px;
+      border-radius: 50%;
+      pointer-events: none;
+      background: radial-gradient(circle,
+        rgba(var(--glow-color), 0.15) 0%,
+        rgba(var(--glow-color), 0.08) 25%,
+        rgba(var(--glow-color), 0.02) 50%,
+        transparent 75%
+      );
+      z-index: 100;
+      opacity: 0;
+      transform: translate(-50%, -50%);
+      mix-blend-mode: overlay; /* Changed to overlay for better visibility on light bg */
+      transition: opacity 0.5s ease;
+    }
+    
+    .magic-card-content {
+      position: relative;
+      z-index: 1;
+    }
+
     .entities-grid { 
       display: grid; 
       grid-template-columns: 1fr 1fr; 
@@ -433,15 +731,10 @@ const styles = {
 
     .summary-grid { 
       display: grid; 
-      grid-template-columns: repeat(3, 1fr); 
+      grid-template-columns: repeat(2, 1fr); 
       gap: 12px; 
       margin-bottom: 24px;
       width: 100%;
-    }
-    @media (max-width: 1024px) {
-      .summary-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
     }
     @media (max-width: 640px) {
       .summary-grid {
@@ -468,7 +761,7 @@ const styles = {
     .summary-card {
       background: var(--surface); border-radius: var(--radius);
       padding: 20px 20px 18px; box-shadow: var(--shadow);
-      border: 1px solid var(--border);
+      border: 1.5px solid var(--border);
     }
     .summary-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 8px; }
     .summary-value { font-size: 1.65rem; font-family: 'DM Serif Display', serif; }
@@ -486,7 +779,7 @@ const styles = {
       padding: 16px 20px; box-shadow: var(--shadow);
       border-left: 3px solid transparent;
       display: flex; align-items: flex-start; gap: 12px;
-      border: 1px solid var(--border);
+      border: 1.5px solid var(--border);
       transition: transform 0.15s;
     }
     .insight-card:hover { transform: translateX(3px); }
@@ -515,6 +808,92 @@ const styles = {
     }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+    /* Dashboard Layout */
+    .dashboard-layout {
+      display: flex;
+      min-height: 100vh;
+      background: var(--bg);
+      width: 100vw;
+    }
+    .sidebar {
+      width: 260px;
+      padding: 24px 16px;
+      background: #0F0E0C;
+      color: white;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 100;
+      border-right: 1px solid rgba(255,255,255,0.08);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.1) transparent;
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+    .sidebar-nav {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sidebar-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      color: rgba(255,255,255,0.6);
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .sidebar-link:hover {
+      background: rgba(255,255,255,0.05);
+      color: white;
+    }
+    .sidebar-link.active {
+      background: var(--amber);
+      color: var(--ink);
+    }
+    .sidebar-link-icon {
+      font-size: 1.2rem;
+    }
+    .main-content {
+      flex: 1;
+      padding: 40px;
+      max-width: 100%;
+      overflow-y: auto;
+      background: var(--bg);
+    }
+    @media (max-width: 768px) {
+      .dashboard-layout { flex-direction: column; }
+      .sidebar { 
+        width: 100%; 
+        height: auto; 
+        position: static; 
+        padding: 16px;
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+      }
+      .sidebar-logo { margin-bottom: 0; }
+      .sidebar-nav { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
+      .sidebar-link { padding: 8px 12px; font-size: 0.8rem; }
+      .main-content { padding: 24px 16px; }
+    }
+
     /* TrueFocus */
     .focus-container {
       position: relative;
@@ -536,9 +915,9 @@ const styles = {
       outline: none;
       user-select: none;
       font-family: 'DM Serif Display', serif;
-      color: var(--ink);
+      color: white;
     }
-    .focus-word.active { filter: blur(0); }
+    .focus-word.active { filter: blur(0); color: var(--amber); }
     .focus-frame {
       position: absolute;
       top: 0;
@@ -814,6 +1193,75 @@ const styles = {
     .suggestion-chip:hover {
       background: var(--amber-light); border-color: var(--amber);
       color: var(--ink); transform: translateY(-1px);
+    }
+
+    /* Charts */
+    .visuals-grid {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 20px;
+      margin-top: 32px;
+    }
+    @media (max-width: 900px) {
+      .visuals-grid { grid-template-columns: 1fr; }
+    }
+    .chart-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 24px;
+      border: 1.5px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .chart-title {
+      font-size: 1.1rem;
+      font-weight: 500;
+      color: var(--ink);
+    }
+    .chart-tag {
+      font-size: 0.75rem;
+      background: var(--amber-light);
+      color: #9A6800;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .recharts-cartesian-axis-tick-value {
+      font-size: 11px;
+      fill: var(--ink-muted);
+    }
+    .recharts-tooltip-cursor {
+      stroke: var(--border);
+      stroke-width: 1;
+    }
+    .custom-tooltip {
+      background: var(--ink) !important;
+      border: none !important;
+      border-radius: 8px !important;
+      padding: 12px !important;
+      color: white !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+    }
+    .custom-tooltip p { margin: 0; font-size: 0.85rem; }
+    .custom-tooltip .label { font-weight: 600; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; }
+    .custom-tooltip .val { display: flex; justify-content: space-between; gap: 20px; margin-top: 4px; }
+    
+    .chart-empty {
+      height: 250px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--ink-muted);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      font-size: 0.9rem;
     }
 
     /* Landing Page */
@@ -2222,10 +2670,227 @@ const TrueFocus = ({
   );
 };
 
+// CountUp
+const CountUp = ({
+  to,
+  from = 0,
+  direction = 'up',
+  delay = 0,
+  duration = 2,
+  className = '',
+  startWhen = true,
+  separator = '',
+  onStart,
+  onEnd
+}) => {
+  const ref = useRef(null);
+  const motionValue = useMotionValue(direction === 'down' ? to : from);
+
+  const damping = 20 + 40 * (1 / duration);
+  const stiffness = 100 * (1 / duration);
+
+  const springValue = useSpring(motionValue, {
+    damping,
+    stiffness
+  });
+
+  const isInView = useInView(ref, { once: true, amount: 0.5 });
+
+  const getDecimalPlaces = num => {
+    const str = num.toString();
+    if (str.includes('.')) {
+      const decimals = str.split('.')[1];
+      if (parseInt(decimals) !== 0) {
+        return decimals.length;
+      }
+    }
+    return 0;
+  };
+
+  const maxDecimals = Math.max(getDecimalPlaces(from), getDecimalPlaces(to));
+
+  const formatValue = useCallback(
+    latest => {
+      const hasDecimals = maxDecimals > 0;
+      const options = {
+        useGrouping: !!separator,
+        minimumFractionDigits: hasDecimals ? maxDecimals : 0,
+        maximumFractionDigits: hasDecimals ? maxDecimals : 0
+      };
+      const formattedNumber = Intl.NumberFormat('en-US', options).format(latest);
+      return separator ? formattedNumber.replace(/,/g, separator) : formattedNumber;
+    },
+    [maxDecimals, separator]
+  );
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.textContent = formatValue(direction === 'down' ? to : from);
+    }
+  }, [from, to, direction, formatValue]);
+
+  useEffect(() => {
+    if (isInView && startWhen) {
+      if (typeof onStart === 'function') onStart();
+      const timeoutId = setTimeout(() => {
+        motionValue.set(direction === 'down' ? from : to);
+      }, delay * 1000);
+
+      const durationTimeoutId = setTimeout(
+        () => {
+          if (typeof onEnd === 'function') onEnd();
+        },
+        delay * 1000 + duration * 1000
+      );
+
+      return () => {
+        clearTimeout(timeoutId);
+        clearTimeout(durationTimeoutId);
+      };
+    }
+  }, [isInView, startWhen, motionValue, direction, from, to, delay, onStart, onEnd, duration]);
+
+  useEffect(() => {
+    const unsubscribe = springValue.on('change', latest => {
+      if (ref.current) {
+        ref.current.textContent = formatValue(latest);
+      }
+    });
+    return () => unsubscribe();
+  }, [springValue, formatValue]);
+
+  return <span className={className} ref={ref} />;
+};
+
+// ─── MAGIC BENTO COMPONENTS ───────────────────────────────────────────────
+
+const MagicCard = ({ children, className = "", style = {}, isDanger = false, noParticles = false }) => {
+  const cardRef = useRef(null);
+  const isHoveredRef = useRef(false);
+  const particlesRef = useRef([]);
+  const timeoutsRef = useRef([]);
+  const glowColor = "232, 160, 32"; // Project Amber
+
+  const clearParticles = useCallback(() => {
+    timeoutsRef.current.forEach(clearTimeout);
+    timeoutsRef.current = [];
+    particlesRef.current.forEach(p => {
+      gsap.to(p, { scale: 0, opacity: 0, duration: 0.3, onComplete: () => p.remove() });
+    });
+    particlesRef.current = [];
+  }, []);
+
+  const spawnParticles = useCallback(() => {
+    if (noParticles || !cardRef.current || !isHoveredRef.current) return;
+    const count = 8;
+    for (let i = 0; i < count; i++) {
+      const tid = setTimeout(() => {
+        if (!isHoveredRef.current || !cardRef.current) return;
+        const p = document.createElement("div");
+        p.className = "particle";
+        const rect = cardRef.current.getBoundingClientRect();
+        p.style.left = `${Math.random() * rect.width}px`;
+        p.style.top = `${Math.random() * rect.height}px`;
+        cardRef.current.appendChild(p);
+        particlesRef.current.push(p);
+
+        gsap.fromTo(p, { scale: 0, opacity: 0 }, { scale: 1, opacity: 0.8, duration: 0.4 });
+        gsap.to(p, {
+          x: (Math.random() - 0.5) * 60,
+          y: (Math.random() - 0.5) * 60,
+          opacity: 0,
+          duration: 1.5 + Math.random(),
+          ease: "power1.out",
+          onComplete: () => {
+            p.remove();
+            particlesRef.current = particlesRef.current.filter(x => x !== p);
+          }
+        });
+      }, i * 150);
+      timeoutsRef.current.push(tid);
+    }
+  }, [noParticles]);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+
+    const onEnter = () => { isHoveredRef.current = true; spawnParticles(); };
+    const onLeave = () => { isHoveredRef.current = false; clearParticles(); };
+    const onMove = (e) => {
+      const rect = el.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      el.style.setProperty("--glow-x", `${x}%`);
+      el.style.setProperty("--glow-y", `${y}%`);
+      el.style.setProperty("--glow-intensity", "1");
+    };
+
+    el.addEventListener("mouseenter", onEnter);
+    el.addEventListener("mouseleave", onLeave);
+    el.addEventListener("mousemove", onMove);
+    return () => {
+      el.removeEventListener("mouseenter", onEnter);
+      el.removeEventListener("mouseleave", onLeave);
+      el.removeEventListener("mousemove", onMove);
+      clearParticles();
+    };
+  }, [spawnParticles, clearParticles]);
+
+  return (
+    <div ref={cardRef} className={`magic-card ${className}`} style={{ ...style, cursor: 'pointer' }}>
+      <div className="magic-card-content" style={{ height: '100%', width: '100%' }}>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const SpotlightGrid = ({ children, className = "" }) => {
+  const containerRef = useRef(null);
+  const spotlightRef = useRef(null);
+
+  useEffect(() => {
+    const spotlight = document.createElement("div");
+    spotlight.className = "global-spotlight";
+    document.body.appendChild(spotlight);
+    spotlightRef.current = spotlight;
+
+    const onMove = (e) => {
+      const rect = containerRef.current.getBoundingClientRect();
+      const isInside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+
+      gsap.to(spotlight, {
+        left: e.clientX,
+        top: e.clientY,
+        opacity: isInside ? 1 : 0,
+        duration: 0.2,
+        ease: "power2.out"
+      });
+
+      const cards = containerRef.current.querySelectorAll(".magic-card");
+      cards.forEach(card => {
+        const cRect = card.getBoundingClientRect();
+        const dist = Math.hypot(e.clientX - (cRect.left + cRect.width / 2), e.clientY - (cRect.top + cRect.height / 2));
+        const intensity = isInside ? Math.max(0, 1 - dist / 400) : 0;
+        card.style.setProperty("--glow-intensity", intensity.toString());
+      });
+    };
+
+    window.addEventListener("mousemove", onMove);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      spotlight.remove();
+    };
+  }, []);
+
+  return <div ref={containerRef} className={className}>{children}</div>;
+};
+
 // LandingNav
 const LandingNav = ({ onStart }) => (
   <nav className="landing-nav">
-    <img src={logo} alt="Monetra Logo" className="nav-logo-img" style={{ height: '32px', cursor: 'pointer' }} />
+    <img src={logo2} alt="Monetra Logo" className="nav-logo-img" style={{ height: '32px', cursor: 'pointer' }} />
     <div className="nav-links-center">
       <a href="#features" className="nav-link">Features</a>
       <a href="#benefits" className="nav-link">Benefits</a>
@@ -2313,16 +2978,16 @@ function LandingPage({ onStart, user }) {
             <p className="section-p" style={{ maxWidth: 520, margin: '0 auto' }}>Powerful tools designed specifically for small businesses and entrepreneurs.</p>
           </div>
 
-          <div className="features-grid">
+          <SpotlightGrid className="features-grid">
             {[
               { icon: '📊', icon2: '📈', title: 'Real-Time Dashboard', desc: 'Monitor revenue, expenses, and cashflow at a glance with beautiful visualizations.', badge: 'Live Data', badgeColor: '#E8A020', bg: 'linear-gradient(135deg, #FFF8E8 0%, #FFF3D0 50%, #FEF0C0 100%)' },
               { icon: '📓', icon2: '🔍', title: 'Smart Transactions', desc: 'Auto-categorize and organize transactions. Search, filter, and analyze effortlessly.', badge: 'AI Sorted', badgeColor: '#2D9E6B', bg: 'linear-gradient(135deg, #EDFAF4 0%, #D6F4E8 50%, #C5EFE0 100%)' },
               { icon: '💡', icon2: '⚡', title: 'AI Insights', desc: 'Intelligent recommendations and alerts. Detect anomalies and make data-driven decisions.', badge: 'Gemini AI', badgeColor: '#3B74D4', bg: 'linear-gradient(135deg, #EBF1FB 0%, #D6E5F8 50%, #C5D9F5 100%)' },
-              { icon: '💬', icon2: '🤖', title: 'AI Assistant', desc: 'Chat with your financial data. Ask questions in plain language and get instant answers.', badge: 'Always On', badgeColor: '#E8A020', bg: 'linear-gradient(135deg, #FFF5EC 0%, #FFE8D0 50%, #FFDCC0 100%)' },
+              { icon: '📓', icon2: '🤖', title: 'AI Assistant', desc: 'Chat with your financial data. Ask questions in plain language and get instant answers.', badge: 'Always On', badgeColor: '#E8A020', bg: 'linear-gradient(135deg, #FFF5EC 0%, #FFE8D0 50%, #FFDCC0 100%)' },
               { icon: '⚡', icon2: '🔔', title: 'Smart Alerts', desc: 'Never miss important financial events. Get notified about unusual expenses or opportunities.', badge: 'Real-time', badgeColor: '#D94F3A', bg: 'linear-gradient(135deg, #FEF0EE 0%, #FDE0DB 50%, #FDD0C9 100%)' },
               { icon: '📱', icon2: '🌐', title: 'Mobile Ready', desc: 'Access your financial data anywhere. Fully responsive design works on all devices.', badge: 'Any Device', badgeColor: '#7B5EA7', bg: 'linear-gradient(135deg, #F3EFFE 0%, #E8E0FC 50%, #DDD0FA 100%)' },
             ].map(({ icon, icon2, title, desc, badge, badgeColor, bg }) => (
-              <div key={title} className="feat-card" style={{ background: bg }}>
+              <MagicCard key={title} className="feat-card" style={{ background: bg }}>
                 <div className="feat-card-top">
                   <div className="feat-icons">
                     <div className="feat-icon-box">{icon}</div>
@@ -2340,9 +3005,9 @@ function LandingPage({ onStart, user }) {
                     {badge}
                   </span>
                 </div>
-              </div>
+              </MagicCard>
             ))}
-          </div>
+          </SpotlightGrid>
         </div>
       </section>
 
@@ -2352,7 +3017,7 @@ function LandingPage({ onStart, user }) {
           <div className="benefits-split">
             <div>
               <div className="section-tag">Benefits</div>
-              <h2 className="section-h2">Why Choose AI Financial Co-Pilot?</h2>
+              <h2 className="section-h2">Why Choose Monetra?</h2>
               <p className="section-p">Built for micro-businesses that want to focus on growth, not accounting.</p>
 
               {[
@@ -2381,28 +3046,28 @@ function LandingPage({ onStart, user }) {
               <div className="mock-stat-row">
                 <div className="mock-stat">
                   <div className="mock-stat-label">Cash In</div>
-                  <div className="mock-stat-value up">$165k</div>
+                  <div className="mock-stat-value up">PKR 165k</div>
                 </div>
                 <div className="mock-stat">
                   <div className="mock-stat-label">Cash Out</div>
-                  <div className="mock-stat-value down">$59k</div>
+                  <div className="mock-stat-value down">PKR 59k</div>
                 </div>
               </div>
               <div className="mock-bar-section">
-                <div className="mock-bar-label"><span className="mock-bar-name">Materials</span><span className="mock-bar-val">$24.5k</span></div>
+                <div className="mock-bar-label"><span className="mock-bar-name">Materials</span><span className="mock-bar-val">PKR 24.5k</span></div>
                 <div className="mock-bar-track"><div className="mock-bar-fill" style={{ width: '72%', background: 'var(--amber)' }} /></div>
               </div>
               <div className="mock-bar-section">
-                <div className="mock-bar-label"><span className="mock-bar-name">Labor</span><span className="mock-bar-val">$18.2k</span></div>
+                <div className="mock-bar-label"><span className="mock-bar-name">Labor</span><span className="mock-bar-val">PKR 18.2k</span></div>
                 <div className="mock-bar-track"><div className="mock-bar-fill" style={{ width: '55%', background: '#4B9EE8' }} /></div>
               </div>
               <div className="mock-bar-section">
-                <div className="mock-bar-label"><span className="mock-bar-name">Marketing</span><span className="mock-bar-val">$9.1k</span></div>
+                <div className="mock-bar-label"><span className="mock-bar-name">Marketing</span><span className="mock-bar-val">PKR 9.1k</span></div>
                 <div className="mock-bar-track"><div className="mock-bar-fill" style={{ width: '28%', background: 'var(--green)' }} /></div>
               </div>
               <div className="mock-ai-chip">
                 <div className="mock-ai-dot" />
-                <span className="mock-ai-text">AI detected a 15% spike in material costs. Consider bulk purchasing to save ~$3.2k.</span>
+                <span className="mock-ai-text">AI detected a 15% spike in material costs. Consider bulk purchasing to save ~PKR 3.2k.</span>
               </div>
             </div>
           </div>
@@ -2412,10 +3077,30 @@ function LandingPage({ onStart, user }) {
       {/* ── Stats ── */}
       <div id="stats" style={{ padding: '0 clamp(20px, 4vw, 40px)' }}>
         <div className="stats-bar">
-          <div className="stat-item"><div className="stat-val">10k+</div><div className="stat-lbl">Businesses Trust Us</div></div>
-          <div className="stat-item"><div className="stat-val">$2.5B+</div><div className="stat-lbl">Transactions Tracked</div></div>
-          <div className="stat-item"><div className="stat-val">98%</div><div className="stat-lbl">Customer Satisfaction</div></div>
-          <div className="stat-item"><div className="stat-val">24/7</div><div className="stat-lbl">AI Support Available</div></div>
+          <div className="stat-item">
+            <div className="stat-val">
+              <CountUp to={10} duration={1.5} />k+
+            </div>
+            <div className="stat-lbl">Businesses Trust Us</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-val">
+              PKR <CountUp to={2.5} duration={1.5} />B+
+            </div>
+            <div className="stat-lbl">Transactions Tracked</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-val">
+              <CountUp to={98} duration={1.5} />%
+            </div>
+            <div className="stat-lbl">Customer Satisfaction</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-val">
+              <CountUp to={24} duration={1.5} />/7
+            </div>
+            <div className="stat-lbl">AI Support Available</div>
+          </div>
         </div>
       </div>
 
@@ -2432,7 +3117,7 @@ function LandingPage({ onStart, user }) {
       <div className="footer-wrap">
         <footer className="footer">
           <div>
-            <img src={logo} alt="Monetra Logo" className="footer-logo-img" style={{ height: '40px', marginBottom: '16px' }} />
+            <img src={logo2} alt="Monetra Logo" className="footer-logo-img" style={{ height: '40px', marginBottom: '16px' }} />
             <p className="footer-desc">AI-powered financial management for micro-businesses. Make smarter decisions with real-time insights.</p>
           </div>
           <div>
@@ -2455,7 +3140,7 @@ function LandingPage({ onStart, user }) {
           </div>
         </footer>
         <div className="footer-bottom-bar">
-          <span>© 2026 AI Financial Co-Pilot. All rights reserved.</span>
+          <span>© 2026 Monetra. All rights reserved.</span>
           <span>Built with ♥ for micro-businesses</span>
         </div>
       </div>
@@ -2465,15 +3150,49 @@ function LandingPage({ onStart, user }) {
 
 
 
+function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, confirmText = "Confirm", cancelText = "Cancel", isDanger = false }) {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">{title}</h3>
+        <p className="modal-body">{message}</p>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onCancel} style={{ padding: '10px 20px', fontSize: '0.9rem' }}>{cancelText}</button>
+          <button
+            className={isDanger ? "" : "btn-primary"}
+            onClick={onConfirm}
+            style={isDanger ? {
+              background: 'var(--red)',
+              color: 'white',
+              border: 'none',
+              padding: '10px 24px',
+              borderRadius: 12,
+              fontWeight: 600,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(220, 38, 38, 0.2)'
+            } : { padding: '10px 24px', fontSize: '0.9rem' }}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // SummaryCard
 function SummaryCard({ label, value, type, tag }) {
-  const fmt = (v) => "$" + Math.abs(v).toLocaleString();
+  const fmt = (v) => "PKR " + Math.abs(v).toLocaleString();
   return (
-    <div className="summary-card">
-      <div className="summary-label">{label}</div>
-      <div className={`summary-value ${type}`}>{fmt(value)}</div>
-      {tag && <div className="summary-tag">{tag}</div>}
-    </div>
+    <MagicCard className="summary-card" style={{ padding: 0 }}>
+      <div style={{ padding: '24px' }}>
+        <div className="summary-label">{label}</div>
+        <div className={`summary-value ${type}`}>{fmt(value)}</div>
+        {tag && <div className="summary-tag">{tag}</div>}
+      </div>
+    </MagicCard>
   );
 }
 
@@ -2511,12 +3230,132 @@ function InsightCard({ message, severity, type }) {
   );
 }
 
+// Custom Tooltip for Recharts
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="custom-tooltip">
+        <p className="label">{label}</p>
+        {payload.map((entry, index) => (
+          <div key={index} className="val">
+            <span style={{ color: entry.color, fontSize: '0.75rem' }}>● {entry.name}:</span>
+            <span style={{ fontWeight: 600 }}>PKR {entry.value.toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
+// TrendsChart
+function TrendsChart({ data }) {
+  if (!data || data.length === 0) return <div className="chart-empty">No trend data available for the selected period.</div>;
+
+  return (
+    <div style={{ width: '100%', height: 260 }}>
+      <ResponsiveContainer>
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--green)" stopOpacity={0.2} />
+              <stop offset="95%" stopColor="var(--green)" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--amber)" stopOpacity={0.2} />
+              <stop offset="95%" stopColor="var(--amber)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+          <XAxis
+            dataKey="date"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: 'var(--ink-muted)', fontSize: 11 }}
+            dy={10}
+          />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: 'var(--ink-muted)', fontSize: 11 }}
+            tickFormatter={(v) => `PKR ${v}`}
+          />
+          <Tooltip content={<CustomTooltip />} />
+          <Area
+            name="Income"
+            type="monotone"
+            dataKey="income"
+            stroke="var(--green)"
+            fillOpacity={1}
+            fill="url(#colorIn)"
+          />
+          <Area
+            name="Expense"
+            type="monotone"
+            dataKey="expense"
+            stroke="var(--amber)"
+            fillOpacity={1}
+            fill="url(#colorOut)"
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// CategoryChart
+function CategoryChart({ data }) {
+  if (!data || data.length === 0) return <div className="chart-empty">No category data available.</div>;
+
+  const COLORS = ['#E8A020', '#4B9EE8', '#2D9E6B', '#7B5EA7', '#D94F3A', '#8D99AE'];
+
+  return (
+    <div style={{ width: '100%', height: 260, position: 'relative' }}>
+      <ResponsiveContainer>
+        <PieChart>
+          <Pie
+            data={data}
+            innerRadius={65}
+            outerRadius={90}
+            paddingAngle={5}
+            dataKey="value"
+          >
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+        </PieChart>
+      </ResponsiveContainer>
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        textAlign: 'center',
+        pointerEvents: 'none'
+      }}>
+        <div style={{ fontSize: '0.7rem', color: 'var(--ink-muted)', textTransform: 'uppercase' }}>Expenses</div>
+        <div style={{ fontSize: '1.2rem', fontWeight: 600, fontFamily: 'DM Serif Display' }}>By Type</div>
+      </div>
+    </div>
+  );
+}
+
 // UploadBox
 function UploadBox({ onSuccess }) {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("idle"); // idle, uploading, analyzing
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [mode, setMode] = useState("file"); // "file" or "manual"
+  const [manualData, setManualData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    amount: "",
+    description: "",
+    direction: "out",
+    category: "Other"
+  });
   const inputRef = useRef();
 
   const handleFile = (f) => {
@@ -2529,21 +3368,43 @@ function UploadBox({ onSuccess }) {
     handleFile(e.dataTransfer.files[0]);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitFile = async () => {
     if (!file) return;
     setStatus("uploading"); setError("");
     try {
-      // Step 1: Upload the file
       const data = await api.upload(file);
-
-      // Step 2: Move to dashboard immediately
-      // We trigger classification in the background so the user isn't stuck
       api.classify(100).catch(err => console.warn("Background analysis started/failed:", err));
-
       onSuccess(data || { summary: MOCK_SUMMARY });
     } catch (err) {
       console.error("Upload failed:", err);
       setError("Upload failed. Please check your connection and try again.");
+    } finally {
+      setStatus("idle");
+    }
+  };
+
+  const handleManualSubmit = async (e) => {
+    e.preventDefault();
+    if (!manualData.amount || !manualData.description) {
+      setError("Please fill in all basic fields.");
+      return;
+    }
+    setStatus("uploading");
+    setError("");
+    try {
+      await api.addTransaction(manualData);
+      // Trigger dashboard data refresh properly
+      onSuccess({ manual: true });
+      // Reset form
+      setManualData({
+        date: new Date().toISOString().split('T')[0],
+        amount: "",
+        description: "",
+        direction: "out",
+        category: "Other"
+      });
+    } catch (err) {
+      setError(err.message);
     } finally {
       setStatus("idle");
     }
@@ -2554,65 +3415,146 @@ function UploadBox({ onSuccess }) {
   return (
     <div className="upload-hero">
       <div>
-        <div className="upload-badge">✦ AI Financial Co-Pilot</div>
+        <div className="upload-badge">✦ Data Management</div>
       </div>
       <div>
-        <h1 className="upload-title">Understand Your<br /><em>Business Finances</em></h1>
+        <h1 className="upload-title">Add Your<br /><em>Business Transactions</em></h1>
         <p className="upload-sub" style={{ marginTop: 12 }}>
-          Upload your bank transactions. We'll handle the rest — no jargon, just clarity.
+          Choose how you want to add your data today.
         </p>
       </div>
 
-      <div
-        className={`dropzone${file ? " file-selected" : ""}${dragging ? " active" : ""}`}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => !file && !isLoading && inputRef.current.click()}
-      >
-        <input ref={inputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={(e) => handleFile(e.target.files[0])} />
-        {file ? (
-          <>
-            <span style={{ fontSize: "2rem" }}>📄</span>
-            <span className="file-name">{file.name}</span>
-            <span style={{ fontSize: "0.8rem", color: "var(--green)" }}>Ready to analyze</span>
-            {!isLoading && (
-              <button style={{ fontSize: "0.8rem", background: "none", border: "none", color: "var(--ink-muted)", cursor: "pointer", marginTop: 4 }} onClick={(e) => { e.stopPropagation(); setFile(null); }}>
-                Change file
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            <span className="dropzone-icon">📁</span>
-            <p className="dropzone-text"><strong>Drop your CSV here</strong> or click to browse</p>
-            <p style={{ fontSize: "0.78rem", color: "var(--ink-muted)" }}>Supports exports from most banks</p>
-          </>
-        )}
+      <div className="mode-toggle">
+        <button className={`mode-btn ${mode === 'file' ? 'active' : ''}`} onClick={() => setMode('file')}>CSV Upload</button>
+        <button className={`mode-btn ${mode === 'manual' ? 'active' : ''}`} onClick={() => setMode('manual')}>Manual Entry</button>
       </div>
 
-      {error && <div className="error-msg">⚠️ {error}</div>}
+      {mode === 'file' ? (
+        <div
+          className={`dropzone${file ? " file-selected" : ""}${dragging ? " active" : ""}`}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => !file && !isLoading && inputRef.current.click()}
+        >
+          <input ref={inputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={(e) => handleFile(e.target.files[0])} />
+          {file ? (
+            <>
+              <span style={{ fontSize: "2rem" }}>📄</span>
+              <span className="file-name">{file.name}</span>
+              <span style={{ fontSize: "0.8rem", color: "var(--green)" }}>Ready to analyze</span>
+              {!isLoading && (
+                <button style={{ fontSize: "0.8rem", background: "none", border: "none", color: "var(--ink-muted)", cursor: "pointer", marginTop: 4 }} onClick={(e) => { e.stopPropagation(); setFile(null); }}>
+                  Change file
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="dropzone-icon">📁</span>
+              <p className="dropzone-text"><strong>Drop your CSV here</strong> or click to browse</p>
+              <p style={{ fontSize: "0.78rem", color: "var(--ink-muted)" }}>Supports exports from most banks</p>
+            </>
+          )}
+        </div>
+      ) : (
+        <form className="manual-form-wrap" onSubmit={handleManualSubmit}>
+          <div className="form-grid">
+            <div className="form-field">
+              <label className="form-label">Date</label>
+              <input
+                type="date"
+                className="form-input"
+                value={manualData.date}
+                onChange={e => setManualData({ ...manualData, date: e.target.value })}
+                required
+              />
+            </div>
+            <div className="form-field">
+              <label className="form-label">Amount (PKR)</label>
+              <input
+                type="number"
+                className="form-input"
+                placeholder="0.00"
+                value={manualData.amount}
+                onChange={e => setManualData({ ...manualData, amount: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="form-field">
+            <label className="form-label">Description / Business Name</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="e.g. Fuel Purchase, Client XYZ Payment"
+              value={manualData.description}
+              onChange={e => setManualData({ ...manualData, description: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="form-grid">
+            <div className="form-field">
+              <label className="form-label">Type</label>
+              <select
+                className="form-select"
+                value={manualData.direction}
+                onChange={e => setManualData({ ...manualData, direction: e.target.value })}
+              >
+                <option value="out">Expense (Cash Out)</option>
+                <option value="in">Income (Cash In)</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <label className="form-label">Category</label>
+              <select
+                className="form-select"
+                value={manualData.category}
+                onChange={e => setManualData({ ...manualData, category: e.target.value })}
+              >
+                {manualData.direction === 'out' ? (
+                  <>
+                    <option value="Fuel">Fuel</option>
+                    <option value="Tools">Tools / Equipment</option>
+                    <option value="Subcontractor">Subcontractor</option>
+                    <option value="Subscription">Subscription</option>
+                    <option value="Rent">Rent / Utilities</option>
+                    <option value="Other">Other Expense</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Sales">Service / Product Sales</option>
+                    <option value="Investment">Investment</option>
+                    <option value="Refund">Refund Received</option>
+                    <option value="Other">Other Income</option>
+                  </>
+                )}
+              </select>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {error && <div className="error-msg" style={{ marginTop: 16 }}>⚠️ {error}</div>}
 
       <button
         className={`btn-primary${isLoading ? " loading" : ""}`}
-        onClick={handleSubmit}
-        disabled={!file || isLoading}
+        onClick={mode === 'file' ? handleSubmitFile : handleManualSubmit}
+        disabled={(mode === 'file' && !file) || isLoading}
+        style={{ marginTop: mode === 'file' ? 0 : 8 }}
       >
-        {status === "uploading" ? (
+        {isLoading ? (
           <>
-            <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>
-            Uploading transactions…
+            <span style={{ animation: "spin 1s linear infinite", display: "inline-block", marginRight: 8 }}>⟳</span>
+            Processing…
           </>
-        ) : status === "analyzing" ? (
-          <>
-            <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>
-            AI analyzing data…
-          </>
-        ) : "Analyze My Business →"}
+        ) : mode === 'file' ? "Analyze CSV Data →" : "Add Entry to Records +"}
       </button>
 
       <p style={{ fontSize: "0.78rem", color: "var(--ink-muted)", textAlign: "center" }}>
-        Your data stays private. We don't store your transactions.
+        Your financial integrity is our priority. No data shared with third parties.
       </p>
     </div>
   );
@@ -2645,23 +3587,12 @@ function ChatBox() {
     setLoading(true);
     try {
       const history = newMessages.map((m) => ({ role: m.role, content: m.text }));
-      const response = await fetch(`${BASE}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, history }),
-      });
+      const data = await api.chat(msg, history);
 
-      const data = await response.json();
-
-      if (response.ok && (data.reply || data.message)) {
+      if (data && (data.reply || data.message)) {
         setMessages([...newMessages, { role: "assistant", text: data.reply || data.message }]);
       } else {
-        // If backend returned a structured fallback (e.g. during rate limit), it might still be in data.reply
-        if (data.reply) {
-          setMessages([...newMessages, { role: "assistant", text: data.reply }]);
-        } else {
-          throw new Error(data.detail || "Empty response from advisor.");
-        }
+        throw new Error("Empty response from advisor.");
       }
     } catch (err) {
       console.error("Advisor error:", err);
@@ -2711,6 +3642,386 @@ function ChatBox() {
   );
 }
 
+// ─── DASHBOARD COMPONENTS ───────────────────────────────────────────────────
+
+function Sidebar({ activePage, setPage, onSignOut, isDemo, user }) {
+  const menuItems = [
+    { id: 'dashboard', label: 'Home', icon: <FiHome /> },
+    { id: 'upload', label: 'Add Data', icon: <FiPlusCircle /> },
+    { id: 'insights', label: 'Critical Insights', icon: <FiAlertCircle /> },
+    { id: 'chat', label: 'Ask AI', icon: <LuBrainCircuit /> },
+    { id: 'history', label: 'Transaction History', icon: <FiList /> },
+    { id: 'settings', label: 'Settings', icon: <FiSettings /> },
+  ];
+
+  return (
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <img src={logo} alt="Monetra" style={{ height: 32, filter: 'drop-shadow(0 2px 8px rgba(232,160,32,0.3))' }} />
+      </div>
+
+      <div className="sidebar-nav">
+        {menuItems.map(item => (
+          <div
+            key={item.id}
+            className={`sidebar-link ${activePage === item.id ? 'active' : ''}`}
+            onClick={() => setPage(item.id)}
+          >
+            <span className="sidebar-link-icon">{item.icon}</span>
+            {item.label}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 'auto', padding: '16px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        {user && (
+          <div style={{
+            background: isDemo ? 'var(--amber)' : 'rgba(255,255,255,0.03)',
+            color: isDemo ? 'var(--ink)' : 'rgba(255,255,255,0.7)',
+            padding: '10px 12px',
+            borderRadius: 12,
+            marginBottom: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            border: isDemo ? 'none' : '1px solid rgba(255,255,255,0.05)'
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 6,
+              background: isDemo ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem'
+            }}>
+              <FiUser style={{ opacity: isDemo ? 1 : 0.6 }} />
+            </div>
+            <div style={{ overflow: 'hidden', flex: 1 }}>
+              <div style={{ fontSize: '0.55rem', opacity: 0.5, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>{isDemo ? 'Demo Mode' : 'Account'}</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+            </div>
+          </div>
+        )}
+        <div
+          className="sidebar-link"
+          onClick={onSignOut}
+          style={{ color: 'var(--red)', opacity: 0.9, marginTop: 4, padding: '8px 12px' }}
+        >
+          <span className="sidebar-link-icon" style={{ fontSize: '1rem' }}><FiLogOut /></span>
+          <span style={{ fontSize: '0.85rem' }}>{isDemo ? 'Exit Demo' : 'Sign Out'}</span>
+        </div>
+      </div>
+    </div >
+  );
+}
+
+function DashboardLayout({ children, activePage, setPage, onSignOut, isDemo, user }) {
+  return (
+    <div className="dashboard-layout">
+      <Sidebar activePage={activePage} setPage={setPage} onSignOut={onSignOut} isDemo={isDemo} user={user} />
+      <div className="main-content">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SettingsPage({ user, setUser, onSignOut }) {
+  const [email, setEmail] = useState(user?.email || "");
+  const [status, setStatus] = useState({ type: "", msg: "" });
+  const [loading, setLoading] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const handleUpdateEmail = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setStatus({ type: "", msg: "" });
+    try {
+      const res = await api.updateEmail(email);
+      setUser({ ...user, email: res.email });
+      setStatus({ type: "success", msg: "Email updated successfully!" });
+    } catch (err) {
+      setStatus({ type: "error", msg: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearData = async () => {
+    setShowClearConfirm(false);
+    setLoading(true);
+    setStatus({ type: "", msg: "" });
+    try {
+      await api.clearData();
+      setStatus({ type: "success", msg: "All data has been cleared successfully. Your dashboard is now reset." });
+    } catch (err) {
+      setStatus({ type: "error", msg: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="dashboard" style={{ maxWidth: 640 }}>
+      <ConfirmModal
+        isOpen={showClearConfirm}
+        title="Permanently Clear Data?"
+        message="This will permanently delete all your transactions, categories, and AI insights. This action cannot be undone."
+        confirmText="Yes, Clear All Data"
+        cancelText="Keep My Data"
+        isDanger={true}
+        onConfirm={handleClearData}
+        onCancel={() => setShowClearConfirm(false)}
+      />
+
+      <div className="dash-header">
+        <h1 className="dash-title">Settings</h1>
+        <p className="dash-sub">Manage your account and data preferences</p>
+      </div>
+
+      <div className="health-card" style={{ marginBottom: 24 }}>
+        <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '1rem' }}>
+          <FiUser style={{ color: 'var(--amber)' }} /> Account Profile
+        </h3>
+        <form onSubmit={handleUpdateEmail}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--ink-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Email Address / Username
+            </label>
+            <input
+              type="email"
+              className="form-input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{ width: '100%' }}
+              required
+            />
+          </div>
+          <button className="btn-primary" disabled={loading} style={{ width: 'auto', padding: '10px 24px', fontSize: '0.85rem' }}>
+            {loading ? "Updating..." : "Update Profile"}
+          </button>
+        </form>
+      </div>
+
+      <div className="health-card" style={{ marginBottom: 24 }}>
+        <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '1rem' }}>
+          <FiShield style={{ color: 'var(--amber)' }} /> Preferences
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: '1px solid var(--border)' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Theme Mode</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Toggle between light and dark</div>
+            </div>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, background: 'var(--amber-light)', color: '#9A6800', padding: '4px 12px', borderRadius: 20 }}>System Default</div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Base Currency</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Primary currency for reporting</div>
+            </div>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, background: 'var(--border)', padding: '4px 12px', borderRadius: 20 }}>PKR</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="health-card" style={{ marginBottom: 24, borderLeft: '4px solid var(--red)' }}>
+        <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '1rem', color: 'var(--red)' }}>
+          <FiTrash2 /> Danger Zone
+        </h3>
+        <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', marginBottom: 20, lineHeight: '1.5' }}>
+          The following actions are destructive and cannot be reversed. Please proceed with caution.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            disabled={loading}
+            style={{
+              background: 'white',
+              color: 'var(--ink)',
+              border: '1.5px solid var(--border)',
+              padding: '12px 20px',
+              borderRadius: 12,
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.2s',
+              boxShadow: 'var(--shadow)'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.borderColor = 'var(--red)';
+              e.currentTarget.style.color = 'var(--red)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border)';
+              e.currentTarget.style.color = 'var(--ink)';
+            }}
+          >
+            <FiDatabase /> Clear All Financial Data
+          </button>
+
+          <button
+            onClick={onSignOut}
+            style={{
+              background: 'var(--red)',
+              color: 'white',
+              border: 'none',
+              padding: '12px 20px',
+              borderRadius: 12,
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.2s',
+              boxShadow: 'var(--shadow)'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.opacity = '0.9'}
+            onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
+          >
+            <FiLogOut /> Sign Out from Account
+          </button>
+        </div>
+      </div>
+
+      {status.msg && (
+        <div className={`error-msg ${status.type}`} style={{
+          background: status.type === 'success' ? 'var(--green-light)' : 'var(--red-light)',
+          color: status.type === 'success' ? 'var(--green)' : 'var(--red)',
+          border: `1.5px solid ${status.type === 'success' ? 'var(--green)' : 'var(--red)'}`,
+          marginBottom: 24,
+          textAlign: 'center',
+          fontWeight: 500
+        }}>
+          {status.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InsightsPage(props) {
+  return (
+    <div className="page">
+      <h2 className="section-title">Critical Insights</h2>
+      <div className="insights-list">
+        {props.loading
+          ? Array(5).fill(0).map((_, i) => (
+            <div key={i} style={{ background: "white", borderRadius: 10, padding: "16px 20px", border: "1px solid var(--border)" }}>
+              <div className="skeleton" style={{ width: "80%" }} />
+            </div>
+          ))
+          : props.insights.length > 0 ? props.insights.map((ins, i) => (
+            <InsightCard key={i} message={ins.message} severity={ins.severity} type={ins.type} />
+          )) : (
+            <div className="health-card" style={{ textAlign: 'center', padding: '40px 20px' }}>
+              <p style={{ color: 'var(--ink-muted)' }}>No critical insights to show yet. Add some transactions to see AI analysis.</p>
+            </div>
+          )
+        }
+      </div>
+    </div>
+  );
+}
+
+function HistoryPage() {
+  const [txs, setTxs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = () => {
+    setLoading(true);
+    api.getTransactions()
+      .then(data => {
+        setTxs(data || []);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch history:", err);
+        setError("Could not load transaction history.");
+        setLoading(false);
+      });
+  };
+
+  useEffect(load, []);
+
+  if (loading) return (
+    <div className="page" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+      <div style={{ animation: 'spin 1s linear infinite', fontSize: '2rem' }}>⟳</div>
+    </div>
+  );
+
+  return (
+    <div className="page">
+      <div className="dash-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 className="dash-title">Transaction History</h1>
+          <p className="dash-sub">Review every record in your account.</p>
+        </div>
+        <button onClick={load} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.8rem' }}>Refresh List</button>
+      </div>
+
+      {error && <div className="error-msg" style={{ marginBottom: 20 }}>{error}</div>}
+
+      {txs.length === 0 ? (
+        <div className="health-card" style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <div style={{ fontSize: '3rem', marginBottom: 20 }}>📋</div>
+          <h3>No transactions found</h3>
+          <p style={{ color: 'var(--ink-muted)', marginTop: 8 }}>Start by uploading a CSV or adding a transaction manually.</p>
+        </div>
+      ) : (
+        <div className="health-card" style={{ padding: 0, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: '#F9F8F6', borderBottom: '1px solid var(--border)' }}>
+                <th style={{ padding: '16px', fontSize: '0.75rem', color: 'var(--ink-muted)' }}>DATE</th>
+                <th style={{ padding: '16px', fontSize: '0.75rem', color: 'var(--ink-muted)' }}>DESCRIPTION</th>
+                <th style={{ padding: '16px', fontSize: '0.75rem', color: 'var(--ink-muted)' }}>CATEGORY</th>
+                <th style={{ padding: '16px', fontSize: '0.75rem', color: 'var(--ink-muted)', textAlign: 'right' }}>AMOUNT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {txs.map((tx, idx) => {
+                const isExpense = tx.direction === 'out';
+                const cat = tx.classification ? (tx.classification.expense_type || tx.classification.revenue_stream || "General") : "Unclassified";
+                return (
+                  <tr key={tx.id || idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '16px', fontSize: '0.9rem' }}>{tx.date}</td>
+                    <td style={{ padding: '16px' }}>
+                      <div style={{ fontWeight: 500, fontSize: '0.92rem' }}>{tx.description}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--ink-muted)' }}>{tx.source === 'manual' ? 'Manual Entry' : 'CSV Import'}</div>
+                    </td>
+                    <td style={{ padding: '16px' }}>
+                      <span style={{
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        fontSize: '0.72rem',
+                        background: isExpense ? '#FEF2F2' : '#F0FDF4',
+                        color: isExpense ? '#991B1B' : '#166534',
+                        fontWeight: 600,
+                        textTransform: 'uppercase'
+                      }}>
+                        {cat}
+                      </span>
+                    </td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 600, color: isExpense ? 'var(--red)' : 'var(--green)' }}>
+                      {isExpense ? '-' : '+'} PKR {tx.amount.toLocaleString()}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── PAGES ────────────────────────────────────────────────────────────────────
 
 function UploadPage({ onSuccess }) {
@@ -2721,43 +4032,27 @@ function UploadPage({ onSuccess }) {
   );
 }
 
-function DashboardPage({ summary }) {
-  const [insights, setInsights] = useState(MOCK_INSIGHTS);
-  const [health, setHealth] = useState(null);
-  const [topCustomers, setTopCustomers] = useState([]);
-  const [topSuppliers, setTopSuppliers] = useState([]);
-  const [recurringExpenses, setRecurringExpenses] = useState([]);
-  const [advisorSummary, setAdvisorSummary] = useState("");
-  const [summaryThis, setSummaryThis] = useState(null);
-  const [summaryLast, setSummaryLast] = useState(null);
-  const [loading, setLoading] = useState(true);
+function DashboardPage({
+  summary,
+  insights,
+  health,
+  topCustomers,
+  topSuppliers,
+  recurringExpenses,
+  advisorSummary,
+  summaryThis,
+  summaryLast,
+  summaryTotal,
+  visuals,
+  loading,
+  onRefresh,
+  user
+}) {
 
-  useEffect(() => {
-    api.insights()
-      .then((data) => {
-        console.log("Dashboard insights data:", data);
-        if (data && typeof data === 'object') {
-          const receivedInsights = data.insights || (Array.isArray(data) ? data : null);
-          if (receivedInsights && Array.isArray(receivedInsights) && receivedInsights.length > 0) {
-            setInsights(receivedInsights);
-          }
-          if (data.health) setHealth(data.health);
-          if (data.top_customers) setTopCustomers(data.top_customers);
-          if (data.top_suppliers) setTopSuppliers(data.top_suppliers);
-          if (data.recurring_expenses) setRecurringExpenses(data.recurring_expenses);
-          if (data.advisor_summary) setAdvisorSummary(data.advisor_summary);
-          if (data.summary_this) setSummaryThis(data.summary_this);
-          if (data.summary_last) setSummaryLast(data.summary_last);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to fetch insights:", err);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  const s = summaryThis || summary || MOCK_SUMMARY;
-  const sl = summaryLast || { cash_in: s.cash_in * 0.9, cash_out: s.cash_out * 0.95, net: s.net * 0.8 };
+  const isActuallyZero = (val) => val === 0 || val === "0";
+  const s = (summaryThis !== null) ? summaryThis : (summary !== null ? summary : (user?.isDemo ? MOCK_SUMMARY : { cash_in: 0, cash_out: 0, net: 0, balance: 0 }));
+  const st = summaryTotal || (user?.isDemo ? MOCK_SUMMARY : s);
+  const sl = (summaryLast !== null) ? summaryLast : { cash_in: 0, cash_out: 0, net: 0 };
 
   const calcGrowth = (curr, prev) => {
     if (!prev || prev === 0) return null;
@@ -2781,20 +4076,83 @@ function DashboardPage({ summary }) {
   return (
     <div className="page">
       <div className="dashboard">
-        <div className="dash-header">
-          <h1 className="dash-title">Financial Intelligence</h1>
-          <p className="dash-sub">Proactive insights and health metrics for your business.</p>
+        <div className="dash-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h1 className="dash-title">Financial Intelligence</h1>
+            <p className="dash-sub">Proactive insights and health metrics for your business.</p>
+          </div>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 20,
+                padding: '7px 16px',
+                fontSize: '0.82rem',
+                fontWeight: 500,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                color: 'var(--ink-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                transition: 'all 0.15s',
+                opacity: loading ? 0.6 : 1,
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ display: 'inline-block', animation: loading ? 'spin 1s linear infinite' : 'none' }}>⟳</span>
+              {loading ? 'Refreshing…' : 'Refresh Charts'}
+            </button>
+          )}
         </div>
 
-        <div className="health-grid">
-          <div className="health-card">
-            <div className="health-score-ring" style={{ borderColor: getHealthColor(h.score) + "33" }}>
-              <div className="health-score-val" style={{ color: getHealthColor(h.score) }}>{h.score}</div>
-              <div className="health-score-label">Score</div>
-            </div>
-            <div className="health-label">Business Status: <span style={{ color: getHealthColor(h.score) }}>{h.status}</span></div>
+        <SpotlightGrid>
+          <div className="dash-header" style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Lifetime Overview
+            </h3>
           </div>
-          <div className="health-card">
+          <div className="summary-grid" style={{ marginBottom: 24 }}>
+            <SummaryCard
+              label="Total Business Cash"
+              value={st.net}
+              type="neutral"
+              tag="Cumulative net from all records"
+            />
+          </div>
+
+          <div className="dash-header" style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Current Month Performance
+            </h3>
+          </div>
+          <div className="summary-grid" style={{ marginBottom: 24 }}>
+            <SummaryCard
+              label="Cash In"
+              value={s.cash_in || 0}
+              type="up"
+              tag={growthIn !== null ? `${growthIn >= 0 ? '↑' : '↓'} ${Math.abs(growthIn)}% vs last month` : "Total revenue this month"}
+            />
+            <SummaryCard
+              label="Cash Out"
+              value={s.cash_out || 0}
+              type="down"
+              tag={growthOut !== null ? `${growthOut >= 0 ? '↑' : '↓'} ${Math.abs(growthOut)}% vs last month` : "Total spend this month"}
+            />
+            <SummaryCard
+              label="Monthly Net Profit"
+              value={s.net || (s.cash_in - s.cash_out)}
+              type={s.net >= 0 ? "up" : "down"}
+              tag={growthNet !== null ? `${growthNet >= 0 ? '↑' : '↓'} ${Math.abs(growthNet)}% vs last month` : "Net take-home for February"}
+            />
+          </div>
+        </SpotlightGrid>
+
+        {/* 2. Survival Runway */}
+        <MagicCard className="health-card" style={{ marginBottom: 24, padding: 0 }}>
+          <div style={{ padding: '24px' }}>
             <div style={{ marginBottom: 16 }}>
               <div className="summary-label">Estimated Runway</div>
               <div className="summary-value" style={{ fontSize: '1.8rem' }}>
@@ -2812,41 +4170,113 @@ function DashboardPage({ summary }) {
               <span>Target: 24w</span>
             </div>
           </div>
-        </div>
+        </MagicCard>
 
-        <div className="health-card" style={{ marginBottom: 24, borderLeft: `4px solid ${getHealthColor(h.score)}` }}>
-          <h3 className="section-title" style={{ fontSize: '1rem', marginBottom: 8, color: getHealthColor(h.score) }}>✦ AI Advisor Brief</h3>
-          <div style={{ whiteSpace: 'pre-line', fontSize: '0.92rem', color: 'var(--ink)', lineHeight: '1.6', fontWeight: 400 }}>
-            {advisor}
+        {/* 3. Cash Flow Pattern */}
+        <div className="chart-card" style={{ marginBottom: 24 }}>
+          <div className="chart-header">
+            <h3 className="chart-title">Cash Flow Pattern</h3>
+            <span className="chart-tag">Daily</span>
           </div>
+          <TrendsChart data={visuals?.trends} />
         </div>
 
-        <div className="summary-grid">
-          <SummaryCard
-            label="Cash In"
-            value={s.cash_in || 0}
-            type="up"
-            tag={growthIn !== null ? `${growthIn >= 0 ? '↑' : '↓'} ${Math.abs(growthIn)}% vs last month` : "Payments received"}
-          />
-          <SummaryCard
-            label="Cash Out"
-            value={s.cash_out || 0}
-            type="down"
-            tag={growthOut !== null ? `${growthOut >= 0 ? '↑' : '↓'} ${Math.abs(growthOut)}% vs last month` : "Money spent"}
-          />
-          <SummaryCard
-            label="Net Change"
-            value={s.net || (s.cash_in - s.cash_out)}
-            type={s.net >= 0 ? "up" : "down"}
-            tag={growthNet !== null ? `${growthNet >= 0 ? '↑' : '↓'} ${Math.abs(growthNet)}% vs last month` : "Your take-home"}
-          />
+        {/* 4. Spend Allocation & Business Health in one row */}
+        <div className="visuals-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: 24 }}>
+          <MagicCard className="chart-card" style={{ padding: 0 }}>
+            <div style={{ padding: '24px' }}>
+              <div className="chart-header">
+                <h3 className="chart-title">Spending Allocation</h3>
+                <span className="chart-tag">Categorized</span>
+              </div>
+              <CategoryChart data={visuals?.distribution} />
+            </div>
+          </MagicCard>
+
+          <MagicCard className="health-card" style={{ padding: '24px' }}>
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="health-score-ring" style={{ borderColor: getHealthColor(h.score) + "33", marginBottom: 16 }}>
+                <div className="health-score-val" style={{ color: getHealthColor(h.score) }}>{h.score}</div>
+                <div className="health-score-label">Score</div>
+              </div>
+              <div className="health-label">Business Status: <span style={{ color: getHealthColor(h.score) }}>{h.status}</span></div>
+            </div>
+          </MagicCard>
         </div>
 
-        <h2 className="section-title">Critical Insights</h2>
+        <MagicCard className="health-card" style={{ marginBottom: 24, borderLeft: `4px solid ${getHealthColor(h.score)}`, padding: 0 }}>
+          <div style={{ padding: '24px' }}>
+            <h3 className="section-title" style={{ fontSize: '1rem', marginBottom: 8, color: getHealthColor(h.score) }}>✦ AI Advisor Brief</h3>
+            <div style={{ whiteSpace: 'pre-line', fontSize: '0.92rem', color: 'var(--ink)', lineHeight: '1.6', fontWeight: 400 }}>
+              {advisor}
+            </div>
+          </div>
+        </MagicCard>
+
+        <div className="entities-grid" style={{ marginBottom: 24 }}>
+          <MagicCard className="health-card" style={{ padding: 0 }}>
+            <div style={{ padding: '20px' }}>
+              <h3 className="section-title" style={{ fontSize: '1rem', marginBottom: 12 }}>Top Revenue Sources</h3>
+              {topCustomers.length > 0 ? topCustomers.map((c, i) => (
+                <div key={i} className="entity-item">
+                  <span className="entity-name">{c.name}</span>
+                  <div>
+                    <span className="entity-amount">PKR {Math.round(c.amount).toLocaleString()}</span>
+                    <span className="entity-pct">{c.percentage}%</span>
+                  </div>
+                </div>
+              )) : (
+                <p style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>No customer data available yet.</p>
+              )}
+            </div>
+          </MagicCard>
+          <MagicCard className="health-card" style={{ padding: 0 }}>
+            <div style={{ padding: '20px' }}>
+              <h3 className="section-title" style={{ fontSize: '1rem', marginBottom: 12 }}>Top Suppliers</h3>
+              {topSuppliers.length > 0 ? topSuppliers.map((s, i) => (
+                <div key={i} className="entity-item">
+                  <span className="entity-name">{s.name}</span>
+                  <div>
+                    <span className="entity-amount">PKR {Math.round(s.amount).toLocaleString()}</span>
+                    <span className="entity-pct">{s.percentage}%</span>
+                  </div>
+                </div>
+              )) : (
+                <p style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>No supplier data available yet.</p>
+              )}
+            </div>
+          </MagicCard>
+        </div>
+
+        <MagicCard className="health-card" style={{ marginBottom: 24, padding: 0 }}>
+          <div style={{ padding: '20px' }}>
+            <h3 className="section-title" style={{ fontSize: '1rem', marginBottom: 12 }}>Recurring Expense Tracker</h3>
+            {recurringExpenses.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {recurringExpenses.map((r, i) => (
+                  <div key={i} className="entity-item">
+                    <span className="entity-name">
+                      {r.name}
+                      <span style={{ fontSize: '0.7rem', background: 'var(--border)', padding: '2px 6px', borderRadius: '4px', marginLeft: 8, color: 'var(--ink-muted)' }}>
+                        {r.frequency}
+                      </span>
+                    </span>
+                    <span className="entity-amount">PKR {Math.round(r.amount).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>No recurring expenses detected yet.</p>
+            )}
+          </div>
+        </MagicCard>
+
+        {/* 8. Critical Intelligence (At Last) */}
+        <h2 className="section-title" style={{ marginTop: 16 }}>Critical Insights</h2>
         <div className="insights-list">
           {loading
             ? Array(3).fill(0).map((_, i) => (
-              <div key={i} style={{ background: "white", borderRadius: 10, padding: "16px 20px", border: "1px solid var(--border)" }}>
+              <div key={i} style={{ background: "white", borderRadius: 10, padding: "16px 20px", border: "1.5px solid var(--border)", boxShadow: "var(--shadow)" }}>
                 <div className="skeleton" style={{ width: "80%" }} />
               </div>
             ))
@@ -2854,58 +4284,6 @@ function DashboardPage({ summary }) {
               <InsightCard key={i} message={ins.message} severity={ins.severity} type={ins.type} />
             ))
           }
-        </div>
-
-        <div className="entities-grid">
-          <div className="health-card">
-            <h3 className="section-title" style={{ fontSize: '1rem', marginBottom: 12 }}>Top Revenue Sources</h3>
-            {topCustomers.length > 0 ? topCustomers.map((c, i) => (
-              <div key={i} className="entity-item">
-                <span className="entity-name">{c.name}</span>
-                <div>
-                  <span className="entity-amount">${Math.round(c.amount).toLocaleString()}</span>
-                  <span className="entity-pct">{c.percentage}%</span>
-                </div>
-              </div>
-            )) : (
-              <p style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>No customer data available yet.</p>
-            )}
-          </div>
-          <div className="health-card">
-            <h3 className="section-title" style={{ fontSize: '1rem', marginBottom: 12 }}>Top Suppliers</h3>
-            {topSuppliers.length > 0 ? topSuppliers.map((s, i) => (
-              <div key={i} className="entity-item">
-                <span className="entity-name">{s.name}</span>
-                <div>
-                  <span className="entity-amount">${Math.round(s.amount).toLocaleString()}</span>
-                  <span className="entity-pct">{s.percentage}%</span>
-                </div>
-              </div>
-            )) : (
-              <p style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>No supplier data available yet.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="health-card" style={{ marginTop: 24 }}>
-          <h3 className="section-title" style={{ fontSize: '1rem', marginBottom: 12 }}>Recurring Expense Tracker</h3>
-          {recurringExpenses.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {recurringExpenses.map((r, i) => (
-                <div key={i} className="entity-item">
-                  <span className="entity-name">
-                    {r.name}
-                    <span style={{ fontSize: '0.7rem', background: 'var(--border)', padding: '2px 6px', borderRadius: '4px', marginLeft: 8, color: 'var(--ink-muted)' }}>
-                      {r.frequency}
-                    </span>
-                  </span>
-                  <span className="entity-amount">${Math.round(r.amount).toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>No recurring expenses detected yet.</p>
-          )}
         </div>
       </div>
     </div>
@@ -2924,24 +4302,17 @@ function ChatPage() {
 
 function Nav({ page, setPage, uploaded, user, onSignOut }) {
   if (page === "landing") return null;
+  const isDemo = user?.isDemo;
   return (
     <div className="nav" style={{ maxWidth: 720, margin: "0 auto", padding: "20px 0 16px" }}>
-      <span className="nav-logo">Co<span>Pilot</span></span>
-      <div className="nav-links">
-        {uploaded && (
-          <>
-            <button className={`nav-btn${page === "dashboard" ? " active" : ""}`} onClick={() => setPage("dashboard")}>Overview</button>
-            <button className={`nav-btn${page === "chat" ? " active" : ""}`} onClick={() => setPage("chat")}>Ask</button>
-            <button className="nav-btn" onClick={() => setPage("upload")}>+ New</button>
-          </>
-        )}
-        {user && <button className="nav-btn" onClick={onSignOut}>Sign Out</button>}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+        <img src={logo} alt="Monetra" style={{ height: 28 }} />
       </div>
     </div>
   );
 }
 
-function AuthPage({ onAuthSuccess, onBack, setUser }) {
+function AuthPage({ onAuthSuccess, onBack, setUser, onDemoLogin }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -2956,11 +4327,16 @@ function AuthPage({ onAuthSuccess, onBack, setUser }) {
       try {
         const data = await api.googleLogin(response.credential);
         localStorage.setItem("token", data.access_token);
-        
-        // Decode the JWT to get user info if possible, or just set a placeholder
-        // For now, let's just set a generic Google User until we can fetch profile
-        localStorage.setItem("user", JSON.stringify({ email: "Google User" })); 
-        setUser({ email: "Google User" }); // Update state immediately
+
+        // Decode the JWT to get user info 
+        let userEmail = "Google User";
+        try {
+          const payload = JSON.parse(atob(response.credential.split('.')[1]));
+          userEmail = payload.email || "Google User";
+        } catch (e) { console.warn("Failed to decode google token", e); }
+
+        localStorage.setItem("user", JSON.stringify({ email: userEmail }));
+        setUser({ email: userEmail });
         onAuthSuccess();
       } catch (err) {
         setError(err.message);
@@ -3007,45 +4383,261 @@ function AuthPage({ onAuthSuccess, onBack, setUser }) {
   };
 
   return (
-    <div className="upload-hero" style={{ textAlign: 'center' }}>
-      <div className="upload-badge">Secure Access</div>
-      <h1 className="upload-title">{isLogin ? "Welcome Back" : "Create Account"}</h1>
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '20px' }}>
-        <div id="google-button"></div>
+    <div className="auth-container">
+      <style>{`
+        .auth-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: calc(100vh - 100px);
+          padding: 20px;
+        }
+        .auth-card {
+          display: flex;
+          width: 100%;
+          max-width: 900px;
+          min-height: 540px;
+          background: #FFF;
+          border-radius: 24px;
+          overflow: hidden;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
+          border: 1px solid var(--border);
+        }
+        .auth-visual {
+          flex: 1;
+          position: relative;
+          background: #0F0E0C;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 40px;
+          color: white;
+          text-align: center;
+          overflow: hidden;
+        }
+        .auth-visual::before {
+          content: "";
+          position: absolute;
+          width: 300px;
+          height: 300px;
+          background: var(--amber);
+          filter: blur(100px);
+          top: -100px;
+          left: -100px;
+          opacity: 0.4;
+          animation: float-blob 15s infinite alternate ease-in-out;
+        }
+        .auth-visual::after {
+          content: "";
+          position: absolute;
+          width: 250px;
+          height: 250px;
+          background: #D4900E;
+          filter: blur(80px);
+          bottom: -80px;
+          right: -50px;
+          opacity: 0.3;
+          animation: float-blob 12s infinite alternate-reverse ease-in-out;
+        }
+        @keyframes float-blob {
+          0% { transform: translate(0, 0) scale(1); }
+          100% { transform: translate(40px, 30px) scale(1.2); }
+        }
+        .auth-visual-content {
+          position: relative;
+          z-index: 10;
+          background: rgba(255, 255, 255, 0.03);
+          backdrop-filter: blur(10px);
+          padding: 40px 30px;
+          border-radius: 20px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+        .auth-form-side {
+          flex: 1;
+          padding: 48px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          background: #FFF;
+        }
+        .auth-title {
+          font-family: 'DM Serif Display', serif;
+          font-size: 2rem;
+          margin-bottom: 8px;
+          color: var(--ink);
+        }
+        .auth-subtitle {
+          color: var(--ink-muted);
+          font-size: 0.9rem;
+          margin-bottom: 32px;
+        }
+        .auth-row-btns {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 24px;
+        }
+        .auth-divider {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 24px;
+          color: var(--ink-muted);
+          font-size: 0.8rem;
+        }
+        .auth-divider::before, .auth-divider::after {
+          content: "";
+          flex: 1;
+          height: 1px;
+          background: var(--border);
+        }
+        .auth-input-group {
+          margin-bottom: 16px;
+        }
+        .auth-input-label {
+          display: block;
+          font-size: 0.8rem;
+          font-weight: 600;
+          margin-bottom: 6px;
+          color: var(--ink);
+        }
+        .auth-input-field {
+          width: 100%;
+          padding: 12px 16px;
+          border-radius: 10px;
+          border: 1.5px solid var(--border);
+          font-family: inherit;
+          font-size: 0.95rem;
+          transition: all 0.2s;
+          box-sizing: border-box;
+        }
+        .auth-input-field:focus {
+          outline: none;
+          border-color: var(--amber);
+          box-shadow: 0 0 0 3px rgba(232, 160, 32, 0.1);
+        }
+        .auth-submit-btn {
+          width: 100%;
+          padding: 14px;
+          background: var(--ink);
+          color: white;
+          border: none;
+          border-radius: 10px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+          margin-top: 8px;
+        }
+        .auth-submit-btn:hover {
+          background: #000;
+          transform: translateY(-1px);
+        }
+        .auth-footer-links {
+          margin-top: 24px;
+          text-align: center;
+        }
+        .auth-demo-pill {
+          background: var(--amber);
+          color: var(--ink);
+          padding: 10px 16px;
+          border-radius: 10px;
+          font-weight: 600;
+          cursor: pointer;
+          border: none;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex: 1;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        .auth-demo-pill:hover {
+          background: #d4900e;
+        }
+        @media (max-width: 768px) {
+          .auth-visual { display: none; }
+          .auth-card { max-width: 450px; }
+          .auth-form-side { padding: 32px; }
+        }
+      `}</style>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '10px 0' }}>
-          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
-          <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>or</span>
-          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+      <div className="auth-card">
+        <div className="auth-visual">
+          <div className="auth-visual-content">
+            <img
+              src={logo}
+              alt="Monetra Logo"
+              style={{ height: 64, marginBottom: 24, filter: 'drop-shadow(0 4px 12px rgba(232,160,32,0.3))' }}
+            />
+            <h2 style={{ fontFamily: 'DM Serif Display, serif', fontSize: '2.4rem', lineHeight: 1.2 }}>
+              {isLogin ? "Welcome back!" : "Let's Get Started!"}
+            </h2>
+            <p style={{ opacity: 0.7, maxWidth: 260, margin: '16px auto 0', fontSize: '0.95rem' }}>
+              Your AI-powered bridge to financial clarity and business growth.
+            </p>
+          </div>
         </div>
 
-        <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <input 
-            className="chat-input" 
-            type="email" 
-            placeholder="Email" 
-            value={email} 
-            onChange={(e) => setEmail(e.target.value)} 
-            required 
-          />
-          <input 
-            className="chat-input" 
-            type="password" 
-            placeholder="Password" 
-            value={password} 
-            onChange={(e) => setPassword(e.target.value)} 
-            required 
-          />
-          {error && <div className="error-msg">{error}</div>}
-          <button className="btn-primary" type="submit" disabled={loading}>
-            {loading ? "Processing..." : (isLogin ? "Sign In" : "Sign Up")}
-          </button>
-          <button type="button" className="nav-btn" onClick={() => setIsLogin(!isLogin)}>
-            {isLogin ? "Need an account? Sign Up" : "Have an account? Sign In"}
-          </button>
-          <button type="button" className="nav-btn" onClick={onBack}>← Back</button>
-        </form>
+        <div className="auth-form-side">
+          <h1 className="auth-title">{isLogin ? "Login" : "Sign Up"}</h1>
+          <p className="auth-subtitle">Please enter your details to {isLogin ? "access your account" : "get started"}.</p>
+
+          <div className="auth-row-btns">
+            <div id="google-button" style={{ flex: 1.5 }}></div>
+            <button className="auth-demo-pill" onClick={onDemoLogin}>
+              <span>🚀</span> Try Demo
+            </button>
+          </div>
+
+          <div className="auth-divider">or continue with email</div>
+
+          <form onSubmit={handleAuth}>
+            <div className="auth-input-group">
+              <label className="auth-input-label">Email Address</label>
+              <input
+                className="auth-input-field"
+                type="email"
+                placeholder="name@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="auth-input-group" style={{ marginBottom: 8 }}>
+              <label className="auth-input-label">Password</label>
+              <input
+                className="auth-input-field"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            {isLogin && (
+              <div style={{ textAlign: 'right', marginBottom: 24 }}>
+                <button type="button" className="nav-btn" style={{ fontSize: '0.8rem', padding: 0 }}>Forgot password?</button>
+              </div>
+            )}
+
+            {error && <div className="error-msg" style={{ marginBottom: 16 }}>{error}</div>}
+
+            <button className="auth-submit-btn" type="submit" disabled={loading}>
+              {loading ? "Processing..." : (isLogin ? "Login" : "Create Account")}
+            </button>
+          </form>
+
+          <div className="auth-footer-links">
+            <button type="button" className="nav-btn" onClick={() => setIsLogin(!isLogin)}>
+              {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Login"}
+            </button>
+            <div style={{ marginTop: 12 }}>
+              <button type="button" className="nav-btn" style={{ opacity: 0.6 }} onClick={onBack}>← Back to landing</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3058,29 +4650,118 @@ export default function App() {
   const [summary, setSummary] = useState(null);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
+
+  // Dashboard Stats
+  const [insights, setInsights] = useState([]);
+  const [health, setHealth] = useState(null);
+  const [topCustomers, setTopCustomers] = useState([]);
+  const [topSuppliers, setTopSuppliers] = useState([]);
+  const [recurringExpenses, setRecurringExpenses] = useState([]);
+  const [advisorSummary, setAdvisorSummary] = useState("");
+  const [summaryThis, setSummaryThis] = useState(null);
+  const [summaryLast, setSummaryLast] = useState(null);
+  const [summaryTotal, setSummaryTotal] = useState(null);
+  const [visuals, setVisuals] = useState({ trends: [], distribution: [] });
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+
+  const fetchDashboardData = () => {
+    setDashboardLoading(true);
+    api.insights()
+      .then((data) => {
+        if (data && typeof data === 'object') {
+          const receivedInsights = data.insights || (Array.isArray(data) ? data : null);
+          if (receivedInsights && Array.isArray(receivedInsights)) {
+            setInsights(receivedInsights);
+          }
+          if (data.health) setHealth(data.health);
+          if (data.top_customers) setTopCustomers(data.top_customers);
+          if (data.top_suppliers) setTopSuppliers(data.top_suppliers);
+          if (data.recurring_expenses) setRecurringExpenses(data.recurring_expenses);
+          if (data.advisor_summary) setAdvisorSummary(data.advisor_summary);
+          if (data.summary_this) setSummaryThis(data.summary_this);
+          if (data.summary_last) setSummaryLast(data.summary_last);
+          if (data.summary_total) setSummaryTotal(data.summary_total);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch dashboard data:", err))
+      .finally(() => setDashboardLoading(false));
+
+    api.visuals()
+      .then((data) => {
+        if (data) setVisuals(data);
+      })
+      .catch((err) => console.error("Failed to fetch visuals:", err));
+  };
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     const token = localStorage.getItem("token");
     if (storedUser && token) {
-      setUser(JSON.parse(storedUser));
+      const u = JSON.parse(storedUser);
+      setUser(u);
+      setPage("dashboard");
+      // Auto fetch data if we're resuming a session
+      fetchDashboardData();
     }
     setAuthLoading(false);
   }, []);
 
   const handleUploadSuccess = (data) => {
-    const s = data && typeof data === "object" && data.summary && typeof data.summary === "object" ? data.summary : null;
-    setSummary(s || MOCK_SUMMARY);
+    // If it's a manual entry, we don't have the summary in 'data' immediately
+    if (data && data.summary) {
+      setSummary(data.summary);
+    }
+    setPage("dashboard");
+
+    // Immediate refresh
+    fetchDashboardData();
+
+    // Delayed refresh to catch any background processing
+    setTimeout(() => {
+      fetchDashboardData();
+    }, 5000);
+  };
+
+  const handleDemoLogin = () => {
+    // Load all demo data instantly — no backend needed
+    setUser(DEMO_DATA.user);
+    setIsDemo(true);
+    setSummary(DEMO_DATA.summary);
+    setSummaryThis(DEMO_DATA.summaryThis);
+    setSummaryLast(DEMO_DATA.summaryLast);
+    setHealth(DEMO_DATA.health);
+    setInsights(DEMO_DATA.insights);
+    setTopCustomers(DEMO_DATA.topCustomers);
+    setTopSuppliers(DEMO_DATA.topSuppliers);
+    setRecurringExpenses(DEMO_DATA.recurringExpenses);
+    setAdvisorSummary(DEMO_DATA.advisorSummary);
+    setVisuals(DEMO_DATA.visuals);
     setPage("dashboard");
   };
 
-  const handleSignOut = () => {
+  const doSignOut = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);
+    setIsDemo(false);
     setPage("landing");
     setSummary(null);
+    // Reset all dashboard state
+    setInsights(MOCK_INSIGHTS);
+    setHealth(null);
+    setTopCustomers([]);
+    setTopSuppliers([]);
+    setRecurringExpenses([]);
+    setAdvisorSummary("");
+    setSummaryThis(null);
+    setSummaryLast(null);
+    setVisuals({ trends: [], distribution: [] });
+    setShowSignOutConfirm(false);
   };
+
+  const handleSignOut = () => setShowSignOutConfirm(true);
 
   if (authLoading) {
     return (
@@ -3090,7 +4771,39 @@ export default function App() {
     );
   }
 
-  const activePage = !user && (page !== "landing" && page !== "auth") ? "landing" : page;
+  const activePage = (!user && page !== "landing" && page !== "auth") ? "landing" : page;
+  const showSidebar = user && activePage !== "landing" && activePage !== "auth";
+
+  const renderPage = () => {
+    switch (activePage) {
+      case "landing": return <LandingPage user={user} onStart={() => user ? setPage("dashboard") : setPage("auth")} />;
+      case "auth": return <AuthPage onAuthSuccess={() => setPage("dashboard")} onBack={() => setPage("landing")} setUser={setUser} onDemoLogin={handleDemoLogin} />;
+      case "upload": return <UploadPage onSuccess={handleUploadSuccess} />;
+      case "dashboard": return (
+        <DashboardPage
+          summary={summary}
+          insights={insights}
+          health={health}
+          topCustomers={topCustomers}
+          topSuppliers={topSuppliers}
+          recurringExpenses={recurringExpenses}
+          advisorSummary={advisorSummary}
+          summaryThis={summaryThis}
+          summaryLast={summaryLast}
+          summaryTotal={summaryTotal}
+          visuals={visuals}
+          loading={dashboardLoading}
+          onRefresh={fetchDashboardData}
+          user={user}
+        />
+      );
+      case "chat": return <ChatPage />;
+      case "insights": return <InsightsPage insights={insights} loading={dashboardLoading} />;
+      case "history": return <HistoryPage />;
+      case "settings": return <SettingsPage user={user} setUser={setUser} onSignOut={handleSignOut} />;
+      default: return <LandingPage user={user} onStart={() => setPage("auth")} />;
+    }
+  };
 
   return (
     <ClickSpark
@@ -3102,14 +4815,31 @@ export default function App() {
     >
       <style>{styles.root}</style>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      <div style={{ maxWidth: "min(752px, 100%)", margin: "0 auto", padding: "0 16px", width: "100%", boxSizing: "border-box", overflowX: "hidden" }}>
-        <Nav page={activePage} setPage={setPage} uploaded={!!summary} user={user} onSignOut={handleSignOut} />
-      </div>
-      {activePage === "landing" && <LandingPage user={user} onStart={() => user ? setPage("upload") : setPage("auth")} />}
-      {activePage === "auth" && <AuthPage onAuthSuccess={() => setPage("upload")} onBack={() => setPage("landing")} setUser={setUser} />}
-      {activePage === "upload" && <UploadPage onSuccess={handleUploadSuccess} />}
-      {activePage === "dashboard" && <DashboardPage summary={summary} />}
-      {activePage === "chat" && <ChatPage />}
+
+      <ConfirmModal
+        isOpen={showSignOutConfirm}
+        title={isDemo ? "Exit Demo Mode?" : "Sign Out?"}
+        message={isDemo ? "You are about to exit demo mode. All session progress will be cleared." : "Are you sure you want to sign out? You will need to login again to access your data."}
+        confirmText={isDemo ? "Yes, Exit Demo" : "Yes, Sign Out"}
+        cancelText="Stay Logged In"
+        isDanger={true}
+        onConfirm={doSignOut}
+        onCancel={() => setShowSignOutConfirm(false)}
+      />
+
+      {!showSidebar && activePage !== "landing" && (
+        <div style={{ maxWidth: "min(752px, 100%)", margin: "0 auto", padding: "0 16px", width: "100%", boxSizing: "border-box" }}>
+          <Nav page={activePage} setPage={setPage} uploaded={!!summary} user={user} onSignOut={handleSignOut} />
+        </div>
+      )}
+
+      {showSidebar ? (
+        <DashboardLayout activePage={activePage} setPage={setPage} onSignOut={handleSignOut} isDemo={isDemo} user={user}>
+          {renderPage()}
+        </DashboardLayout>
+      ) : (
+        renderPage()
+      )}
     </ClickSpark>
   );
 }

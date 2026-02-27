@@ -8,10 +8,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    supabase_url: str
-    supabase_service_role_key: str
-    supabase_anon_key: str | None = None
-    supabase_jwt_secret: str | None = None
 
     llm_provider: str = "openai_compatible"  # openai_compatible | gemini
     llm_base_url: str = "https://api.openai.com/v1"
@@ -34,6 +30,7 @@ class Settings(BaseSettings):
 
     # Google OAuth settings
     google_client_id: str = "1035751746820-88qdnhupc7uq3l4ich1h81vne4d3vr1v.apps.googleusercontent.com"
+    google_client_secret: str | None = None
 
 
 settings = Settings()

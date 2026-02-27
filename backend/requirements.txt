@@ -4,5 +4,15 @@ python-multipart==0.0.9
 pydantic==2.10.6
 pydantic-settings==2.7.1
 httpx==0.27.2
-supabase==2.10.0
 python-dateutil==2.9.0.post0
+
+# MongoDB
+motor==3.4.0
+pymongo==4.6.3
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Google OAuth
+google-auth==2.29.0
