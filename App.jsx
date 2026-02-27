@@ -1760,28 +1760,20 @@ const styles = {
 
     /* ── Hero ── */
     .landing-hero {
-      padding: clamp(56px, 9vw, 96px) clamp(20px, 4vw, 40px) clamp(48px, 8vw, 80px);
+      padding: 80px 20px 60px;
       text-align: center;
       background: linear-gradient(160deg, #16130F 0%, #231F18 40%, #2E2816 75%, #3D340E 100%);
-      margin-bottom: 0;
       width: 100%;
-      box-sizing: border-box;
-      position: relative;
-      overflow: hidden;
-      min-height: calc(100vh - 64px);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
+      min-height: auto;
+      display: block;
     }
-    @supports (height: 100dvh) {
+    @media (min-width: 769px) {
       .landing-hero {
-        min-height: calc(100dvh - 64px);
-      }
-    }
-    @media (max-width: 768px) {
-      .landing-hero {
-        min-height: 100vh;
-        min-height: 100dvh;
+        padding: clamp(56px, 9vw, 96px) clamp(20px, 4vw, 40px) clamp(48px, 8vw, 80px);
+        min-height: calc(100vh - 64px);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
       }
     }
     .landing-hero::before {
