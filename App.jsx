@@ -1263,6 +1263,363 @@ const styles = {
       border-radius: 12px;
       font-size: 0.9rem;
     }
+    
+    /* Mobile-first responsive utilities */
+    @media (max-width: 375px) {
+      :root {
+        --radius: 12px;
+        --radius-sm: 8px;
+      }
+      
+      .page { padding: 0 12px; }
+      
+      .upload-hero {
+        padding: 20px 0 28px !important;
+        gap: 14px !important;
+      }
+      
+      .upload-title {
+        font-size: 1.35rem !important;
+      }
+      
+      .dropzone {
+        padding: 16px 12px !important;
+      }
+      
+      .dropzone-text {
+        font-size: 0.8rem;
+      }
+      
+      .manual-form-wrap {
+        padding: 16px !important;
+      }
+      
+      .form-input, .form-select {
+        padding: 10px 12px;
+        font-size: 0.9rem;
+      }
+      
+      .btn-primary {
+        padding: 12px 16px;
+        font-size: 0.8rem;
+      }
+      
+      .health-card {
+        padding: 16px !important;
+      }
+      
+      .summary-card {
+        padding: 14px 12px !important;
+      }
+      
+      .summary-value {
+        font-size: 1.1rem !important;
+      }
+      
+      .dash-title {
+        font-size: 1.3rem !important;
+      }
+      
+      .section-title {
+        font-size: 1.1rem !important;
+      }
+      
+      .insight-card {
+        padding: 12px 14px !important;
+      }
+      
+      .insight-text {
+        font-size: 0.85rem !important;
+      }
+      
+      .modal-content {
+        padding: 24px 20px !important;
+        margin: 16px !important;
+        max-width: calc(100% - 32px) !important;
+      }
+      
+      .chat-bubble {
+        max-width: 90% !important;
+        padding: 10px 12px !important;
+        font-size: 0.85rem !important;
+      }
+      
+      .suggestion-chip {
+        font-size: 0.75rem;
+        padding: 5px 10px;
+      }
+      
+      .chart-card {
+        padding: 16px !important;
+      }
+      
+      .entity-item {
+        padding: 8px 0 !important;
+      }
+      
+      .entity-name, .entity-amount {
+        font-size: 0.8rem !important;
+      }
+      
+      /* Better touch targets for mobile */
+      .sidebar-link {
+        padding: 10px 12px !important;
+        min-height: 44px;
+      }
+      
+      .nav-btn {
+        padding: 8px 12px;
+        min-height: 36px;
+      }
+      
+      /* Smaller sidebar for very small screens */
+      .sidebar {
+        padding: 12px !important;
+      }
+      
+      .sidebar-logo img {
+        height: 24px !important;
+      }
+      
+      /* Auth page improvements */
+      .auth-form-side {
+        padding: 24px 16px !important;
+      }
+      
+      .auth-title {
+        font-size: 1.5rem !important;
+      }
+      
+      .auth-row-btns {
+        flex-direction: column;
+        gap: 10px;
+      }
+      
+      #google-button {
+        width: 100% !important;
+      }
+      
+      .auth-demo-pill {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+    
+    /* Extra small screens */
+    @media (max-width: 320px) {
+      .landing-title {
+        font-size: 1.6rem !important;
+      }
+      
+      .landing-sub {
+        font-size: 0.9rem !important;
+      }
+      
+      .section-h2 {
+        font-size: 1.3rem !important;
+      }
+      
+      .upload-title {
+        font-size: 1.2rem !important;
+      }
+    }
+    
+    /* Mobile landscape optimizations */
+    @media (max-height: 500px) and (orientation: landscape) {
+      .landing-hero {
+        min-height: auto;
+        padding: 40px 20px;
+      }
+      
+      .sidebar {
+        height: auto;
+        max-height: 100vh;
+      }
+      
+      .chat-wrap {
+        height: calc(100vh - 60px);
+      }
+    }
+    
+    /* Table responsiveness for mobile */
+    @media (max-width: 640px) {
+      table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      th, td {
+        white-space: nowrap;
+        padding: 12px 8px !important;
+        font-size: 0.85rem;
+      }
+      
+      th {
+        font-size: 0.7rem !important;
+      }
+    }
+    
+    /* Better modal on mobile */
+    @media (max-width: 480px) {
+      .modal-overlay {
+        align-items: flex-end;
+        padding: 0;
+      }
+      
+      .modal-content {
+        border-radius: 24px 24px 0 0;
+        max-height: 90vh;
+        overflow-y: auto;
+        animation: slideUpMobile 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      
+      @keyframes slideUpMobile {
+        from { transform: translateY(100%); opacity: 1; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      
+      .modal-actions {
+        flex-direction: column-reverse;
+        gap: 8px;
+      }
+      
+      .modal-actions button {
+        width: 100%;
+      }
+    }
+    
+    /* Touch-friendly improvements */
+    @media (pointer: coarse) {
+      .sidebar-link, .nav-btn, .btn-primary, .auth-submit-btn, .chat-send {
+        min-height: 44px;
+      }
+      
+      .form-input, .form-select, .auth-input-field {
+        font-size: 16px !important; /* Prevent zoom on iOS */
+      }
+      
+      .suggestion-chip {
+        padding: 8px 14px;
+      }
+      
+      .dropzone {
+        min-height: 120px;
+      }
+      
+      .feat-pin {
+        width: 36px;
+        height: 36px;
+      }
+    }
+    
+    /* Improved sidebar mobile experience */
+    @media (max-width: 768px) {
+      .dashboard-layout {
+        flex-direction: column;
+      }
+      
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: fixed;
+        bottom: 0;
+        top: auto;
+        left: 0;
+        right: 0;
+        padding: 8px 12px !important;
+        flex-direction: row;
+        justify-content: space-around;
+        border-right: none;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        z-index: 1000;
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+      
+      .sidebar-logo, .sidebar-nav > div:last-child {
+        display: none;
+      }
+      
+      .sidebar-nav {
+        flex-direction: row !important;
+        justify-content: space-around;
+        width: 100%;
+        gap: 4px !important;
+      }
+      
+      .sidebar-link {
+        flex-direction: column;
+        padding: 8px 6px !important;
+        font-size: 0.7rem;
+        gap: 4px !important;
+        min-width: 60px;
+        text-align: center;
+        border-radius: 12px;
+      }
+      
+      .sidebar-link-icon {
+        font-size: 1.1rem !important;
+      }
+      
+      .sidebar-link span:last-child {
+        font-size: 0.65rem;
+        white-space: nowrap;
+      }
+      
+      .main-content {
+        padding: 20px 16px 100px !important; /* Extra bottom padding for fixed sidebar */
+      }
+      
+      /* Hide text on very small mobile sidebar */
+      @media (max-width: 400px) {
+        .sidebar-link span:last-child {
+          display: none;
+        }
+        
+        .sidebar-link {
+          min-width: 48px;
+          padding: 10px !important;
+        }
+      }
+    }
+    
+    /* Chart responsiveness */
+    @media (max-width: 480px) {
+      .recharts-cartesian-axis-tick-value {
+        font-size: 9px !important;
+      }
+      
+      .recharts-tooltip-wrapper {
+        max-width: 200px;
+      }
+      
+      .custom-tooltip {
+        padding: 8px !important;
+      }
+      
+      .custom-tooltip p {
+        font-size: 0.75rem;
+      }
+    }
+    
+    /* Safe area insets for notched phones */
+    @supports (padding: max(0px)) {
+      @media (max-width: 768px) {
+        .sidebar {
+          padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
+        }
+        
+        .main-content {
+          padding-bottom: max(100px, calc(80px + env(safe-area-inset-bottom))) !important;
+        }
+        
+        .page {
+          padding-left: max(16px, env(safe-area-inset-left));
+          padding-right: max(16px, env(safe-area-inset-right));
+        }
+      }
+    }
 
     /* Landing Page */
     .landing-root {
