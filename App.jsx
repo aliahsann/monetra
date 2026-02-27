@@ -1570,7 +1570,7 @@ const styles = {
       
       .dashboard-layout {
         flex-direction: column;
-        padding-top: 56px; /* Space for mobile header */
+        padding-top: 0; /* Space for mobile header is applied to main-content */
         height: 100vh;
         min-height: 100vh;
         overflow: hidden;
@@ -1646,6 +1646,7 @@ const styles = {
       
       .main-content {
         padding: 20px 16px !important;
+        padding-top: calc(56px + 20px) !important;
         margin-left: 0 !important;
         flex: 1;
         min-height: 0;
