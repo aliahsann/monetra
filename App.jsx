@@ -1513,75 +1513,151 @@ const styles = {
       }
     }
     
-    /* Improved sidebar mobile experience */
+    /* Sliding Sidebar Mobile Experience */
+    .mobile-header {
+      display: none;
+    }
+    
     @media (max-width: 768px) {
-      .dashboard-layout {
-        flex-direction: column;
-      }
-      
-      .sidebar {
-        width: 100%;
-        height: auto;
+      .mobile-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: #0F0E0C;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
         position: fixed;
-        bottom: 0;
-        top: auto;
+        top: 0;
         left: 0;
         right: 0;
-        padding: 8px 12px !important;
-        flex-direction: row;
-        justify-content: space-around;
-        border-right: none;
-        border-top: 1px solid rgba(255,255,255,0.08);
+        z-index: 998;
+        height: 56px;
+      }
+      
+      .hamburger-btn {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.05);
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        padding: 8px;
+        gap: 5px;
+        transition: background 0.2s;
+      }
+      
+      .hamburger-btn:hover {
+        background: rgba(255,255,255,0.1);
+      }
+      
+      .hamburger-btn span {
+        display: block;
+        width: 20px;
+        height: 2px;
+        background: white;
+        border-radius: 2px;
+        transition: all 0.3s ease;
+      }
+      
+      .mobile-logo {
+        height: 24px;
+        filter: drop-shadow(0 2px 8px rgba(232,160,32,0.3));
+      }
+      
+      .dashboard-layout {
+        flex-direction: column;
+        padding-top: 56px; /* Space for mobile header */
+      }
+      
+      /* Mobile sidebar - hidden by default, slides in */
+      .sidebar.mobile {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 280px;
+        height: 100vh;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         z-index: 1000;
-        overflow-x: auto;
-        overflow-y: hidden;
+        border-right: 1px solid rgba(255,255,255,0.08);
+        border-top: none;
+        padding: 0 !important;
+        flex-direction: column;
+        justify-content: flex-start;
       }
       
-      .sidebar-logo, .sidebar-nav > div:last-child {
-        display: none;
+      .sidebar.mobile.open {
+        transform: translateX(0);
       }
       
-      .sidebar-nav {
-        flex-direction: row !important;
-        justify-content: space-around;
+      .sidebar.mobile .sidebar-logo {
+        display: none; /* Logo is in the mobile header section inside sidebar */
+      }
+      
+      .sidebar.mobile .sidebar-nav {
+        flex-direction: column !important;
+        justify-content: flex-start;
         width: 100%;
         gap: 4px !important;
+        padding: 8px 12px;
+        flex: 1;
+        overflow-y: auto;
       }
       
-      .sidebar-link {
-        flex-direction: column;
-        padding: 8px 6px !important;
-        font-size: 0.7rem;
-        gap: 4px !important;
-        min-width: 60px;
-        text-align: center;
+      .sidebar.mobile .sidebar-link {
+        flex-direction: row;
+        padding: 12px 16px !important;
+        font-size: 0.9rem;
+        gap: 12px !important;
+        min-width: auto;
+        text-align: left;
         border-radius: 12px;
       }
       
-      .sidebar-link-icon {
-        font-size: 1.1rem !important;
+      .sidebar.mobile .sidebar-link-icon {
+        font-size: 1.2rem !important;
       }
       
-      .sidebar-link span:last-child {
-        font-size: 0.65rem;
+      .sidebar.mobile .sidebar-link span:last-child {
+        font-size: 0.9rem;
         white-space: nowrap;
       }
       
-      .main-content {
-        padding: 20px 16px 100px !important; /* Extra bottom padding for fixed sidebar */
+      /* Show the user section and sign out */
+      .sidebar.mobile > div:last-child {
+        padding: 16px !important;
+        border-top: 1px solid rgba(255,255,255,0.08);
       }
       
-      /* Hide text on very small mobile sidebar */
-      @media (max-width: 400px) {
-        .sidebar-link span:last-child {
-          display: none;
-        }
-        
-        .sidebar-link {
-          min-width: 48px;
-          padding: 10px !important;
-        }
+      .main-content {
+        padding: 20px 16px !important;
+        margin-left: 0 !important;
       }
+    }
+    
+    /* Desktop sidebar */
+    @media (min-width: 769px) {
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        width: 260px;
+        flex-shrink: 0;
+      }
+      
+      .mobile-sidebar-overlay {
+        display: none !important;
+      }
+    }
+    
+    /* Animation for overlay */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
     
     /* Chart responsiveness */
@@ -1606,12 +1682,20 @@ const styles = {
     /* Safe area insets for notched phones */
     @supports (padding: max(0px)) {
       @media (max-width: 768px) {
-        .sidebar {
-          padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
+        .mobile-header {
+          padding-top: max(12px, env(safe-area-inset-top));
+          padding-left: max(16px, env(safe-area-inset-left));
+          padding-right: max(16px, env(safe-area-inset-right));
+        }
+        
+        .sidebar.mobile {
+          padding-top: max(0px, env(safe-area-inset-top)) !important;
         }
         
         .main-content {
-          padding-bottom: max(100px, calc(80px + env(safe-area-inset-bottom))) !important;
+          padding-left: max(16px, env(safe-area-inset-left));
+          padding-right: max(16px, env(safe-area-inset-right));
+          padding-bottom: max(20px, env(safe-area-inset-bottom)) !important;
         }
         
         .page {
@@ -4001,7 +4085,16 @@ function ChatBox() {
 
 // ─── DASHBOARD COMPONENTS ───────────────────────────────────────────────────
 
-function Sidebar({ activePage, setPage, onSignOut, isDemo, user }) {
+function Sidebar({ activePage, setPage, onSignOut, isDemo, user, isOpen, onClose }) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   const menuItems = [
     { id: 'dashboard', label: 'Home', icon: <FiHome /> },
     { id: 'upload', label: 'Add Data', icon: <FiPlusCircle /> },
@@ -4011,68 +4104,166 @@ function Sidebar({ activePage, setPage, onSignOut, isDemo, user }) {
     { id: 'settings', label: 'Settings', icon: <FiSettings /> },
   ];
 
+  const handleNavClick = (pageId) => {
+    setPage(pageId);
+    if (isMobile && onClose) onClose();
+  };
+
   return (
-    <div className="sidebar">
-      <div className="sidebar-logo">
-        <img src={logo} alt="Monetra" style={{ height: 32, filter: 'drop-shadow(0 2px 8px rgba(232,160,32,0.3))' }} />
-      </div>
+    <>
+      {/* Mobile Overlay */}
+      {isMobile && isOpen && (
+        <div 
+          className="mobile-sidebar-overlay" 
+          onClick={onClose}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 999,
+            animation: 'fadeIn 0.3s ease'
+          }}
+        />
+      )}
 
-      <div className="sidebar-nav">
-        {menuItems.map(item => (
-          <div
-            key={item.id}
-            className={`sidebar-link ${activePage === item.id ? 'active' : ''}`}
-            onClick={() => setPage(item.id)}
-          >
-            <span className="sidebar-link-icon">{item.icon}</span>
-            {item.label}
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: 'auto', padding: '16px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        {user && (
+      <div className={`sidebar ${isMobile ? 'mobile' : ''} ${isOpen ? 'open' : ''}`}>
+        {/* Mobile Header with Close Button */}
+        {isMobile && (
           <div style={{
-            background: isDemo ? 'var(--amber)' : 'rgba(255,255,255,0.03)',
-            color: isDemo ? 'var(--ink)' : 'rgba(255,255,255,0.7)',
-            padding: '10px 12px',
-            borderRadius: 12,
-            marginBottom: 4,
             display: 'flex',
             alignItems: 'center',
-            gap: 12,
-            border: isDemo ? 'none' : '1px solid rgba(255,255,255,0.05)'
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            borderBottom: '1px solid rgba(255,255,255,0.08)'
           }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: 6,
-              background: isDemo ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem'
-            }}>
-              <FiUser style={{ opacity: isDemo ? 1 : 0.6 }} />
+            <div className="sidebar-logo" style={{ marginBottom: 0 }}>
+              <img src={logo} alt="Monetra" style={{ height: 28, filter: 'drop-shadow(0 2px 8px rgba(232,160,32,0.3))' }} />
             </div>
-            <div style={{ overflow: 'hidden', flex: 1 }}>
-              <div style={{ fontSize: '0.55rem', opacity: 0.5, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>{isDemo ? 'Demo Mode' : 'Account'}</div>
-              <div style={{ fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
-            </div>
+            <button 
+              onClick={onClose}
+              style={{
+                background: 'rgba(255,255,255,0.1)',
+                border: 'none',
+                borderRadius: '8px',
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontSize: '1.2rem',
+                cursor: 'pointer'
+              }}
+            >
+              <FiX />
+            </button>
           </div>
         )}
-        <div
-          className="sidebar-link"
-          onClick={onSignOut}
-          style={{ color: 'var(--red)', opacity: 0.9, marginTop: 4, padding: '8px 12px' }}
-        >
-          <span className="sidebar-link-icon" style={{ fontSize: '1rem' }}><FiLogOut /></span>
-          <span style={{ fontSize: '0.85rem' }}>{isDemo ? 'Exit Demo' : 'Sign Out'}</span>
+
+        {/* Desktop Logo */}
+        {!isMobile && (
+          <div className="sidebar-logo">
+            <img src={logo} alt="Monetra" style={{ height: 32, filter: 'drop-shadow(0 2px 8px rgba(232,160,32,0.3))' }} />
+          </div>
+        )}
+
+        <div className="sidebar-nav">
+          {menuItems.map(item => (
+            <div
+              key={item.id}
+              className={`sidebar-link ${activePage === item.id ? 'active' : ''}`}
+              onClick={() => handleNavClick(item.id)}
+            >
+              <span className="sidebar-link-icon">{item.icon}</span>
+              {item.label}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 'auto', padding: '16px 0 0', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          {user && (
+            <div style={{
+              background: isDemo ? 'var(--amber)' : 'rgba(255,255,255,0.03)',
+              color: isDemo ? 'var(--ink)' : 'rgba(255,255,255,0.7)',
+              padding: '10px 12px',
+              borderRadius: 12,
+              marginBottom: 4,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              border: isDemo ? 'none' : '1px solid rgba(255,255,255,0.05)'
+            }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 6,
+                background: isDemo ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.05)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem'
+              }}>
+                <FiUser style={{ opacity: isDemo ? 1 : 0.6 }} />
+              </div>
+              <div style={{ overflow: 'hidden', flex: 1 }}>
+                <div style={{ fontSize: '0.55rem', opacity: 0.5, textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>{isDemo ? 'Demo Mode' : 'Account'}</div>
+                <div style={{ fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+              </div>
+            </div>
+          )}
+          <div
+            className="sidebar-link"
+            onClick={onSignOut}
+            style={{ color: 'var(--red)', opacity: 0.9, marginTop: 4, padding: '8px 12px' }}
+          >
+            <span className="sidebar-link-icon" style={{ fontSize: '1rem' }}><FiLogOut /></span>
+            <span style={{ fontSize: '0.85rem' }}>{isDemo ? 'Exit Demo' : 'Sign Out'}</span>
+          </div>
         </div>
       </div>
-    </div >
+    </>
   );
 }
 
 function DashboardLayout({ children, activePage, setPage, onSignOut, isDemo, user }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <div className="dashboard-layout">
-      <Sidebar activePage={activePage} setPage={setPage} onSignOut={onSignOut} isDemo={isDemo} user={user} />
+      {/* Mobile Header with Hamburger */}
+      {isMobile && (
+        <div className="mobile-header">
+          <button 
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+          >
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <img src={logo} alt="Monetra" className="mobile-logo" />
+          <div style={{ width: '40px' }} /> {/* Spacer for balance */}
+        </div>
+      )}
+
+      <Sidebar 
+        activePage={activePage} 
+        setPage={setPage} 
+        onSignOut={onSignOut} 
+        isDemo={isDemo} 
+        user={user}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      
       <div className="main-content">
         {children}
       </div>
